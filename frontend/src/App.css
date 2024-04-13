@@ -36,3 +36,17 @@
     transform: rotate(360deg);
   }
 }
+
+
+.great-vibes-regular {
+  font-family: "Great Vibes", cursive;
+  font-weight: 400;
+  font-style: normal;
+}
+body{
+  background-color: white;
+  color: rgb(36, 36, 36);
+  font-family: "Gilda Display", serif;
+  font-weight: 400;
+  font-style: normal;
+}

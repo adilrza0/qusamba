@@ -1,9 +1,12 @@
 import React from 'react'
+import Crousel from '../Component/Crousel'
 
 export default function Home() {
+  
   return (
-    <div>
-      <h1 className='bg-blue-500'>Home</h1>
+    <div data-theme className=''>
+      <Crousel/>
+      <h1 className=''>Home</h1>
     </div>
   )
 }

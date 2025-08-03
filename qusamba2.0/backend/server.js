@@ -2,6 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const cors = require('cors');
+const axios = require('axios');
 
 const shippingRoutes = require('./routes/shippingRoutes');
 
@@ -67,6 +68,14 @@ app.use('/api/admin/settings', adminSettingsRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/shipping', shippingRoutes);
 app.use('/api', require('./routes/wishlistCartRoutes'));
+
+axios.get('https://api.ipify.org?format=json')
+  .then(res => {
+    console.log('Public IP address of this backend:', res.data.ip);
+  })
+  .catch(err => {
+    console.error('Error fetching IP:', err.message);
+  });
 
 mongoose.connect(process.env.MONGO_URI)
   .then(() => {

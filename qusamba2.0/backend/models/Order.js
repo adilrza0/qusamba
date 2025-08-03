@@ -41,7 +41,8 @@ const shippingAddressSchema = new mongoose.Schema({
 const paymentSchema = new mongoose.Schema({
   method: {
     type: String,
-    enum: ['stripe', 'razorpay', 'paypal', 'cod', 'bank_transfer'],
+    enum: ['razorpay'],
+    default: 'razorpay',
     required: true
   },
   status: {
@@ -50,7 +51,10 @@ const paymentSchema = new mongoose.Schema({
     default: 'pending'
   },
   transactionId: String,
-  paymentIntentId: String, // For Stripe
+  // Razorpay fields
+  razorpayOrderId: String,
+  razorpayPaymentId: String,
+  razorpaySignature: String,
   amount: {
     type: Number,
     required: true
@@ -65,13 +69,14 @@ const paymentSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
-  refundReason: String
+  refundReason: String,
+  refundId: String // For Razorpay refunds
 });
 
 const trackingSchema = new mongoose.Schema({
   status: {
     type: String,
-    enum: ['placed', 'confirmed', 'processing', 'shipped', 'out_for_delivery', 'delivered', 'cancelled', 'returned'],
+    enum: ['placed', 'confirmed', 'processing', 'ready_to_ship', 'shipped', 'out_for_delivery', 'delivered', 'cancelled', 'returned'],
     required: true
   },
   message: String,
@@ -90,8 +95,8 @@ const orderSchema = new mongoose.Schema({
   // Order identification
   orderNumber: {
     type: String,
-    unique: true,
-    required: true
+    unique: true
+    // Note: Generated automatically by pre-save hook
   },
   
   // Customer information
@@ -138,7 +143,7 @@ const orderSchema = new mongoose.Schema({
   // Order status
   status: {
     type: String,
-    enum: ['placed', 'confirmed', 'processing', 'shipped', 'out_for_delivery', 'delivered', 'cancelled', 'returned'],
+    enum: ['placed', 'confirmed', 'processing', 'ready_to_ship', 'shipped', 'out_for_delivery', 'delivered', 'cancelled', 'returned'],
     default: 'placed'
   },
   
@@ -159,7 +164,23 @@ const orderSchema = new mongoose.Schema({
     trackingNumber: String,
     estimatedDelivery: Date,
     actualDelivery: Date,
-    shippedAt: Date
+    shippedAt: Date,
+    // Shiprocket specific fields
+    shiprocket_order_id: String,
+    shipment_id: String,
+    awb_code: String,
+    courier_company_id: String,
+    courier_name: String,
+    pickup_location: String,
+    weight: {
+      type: Number,
+      default: 0.5
+    },
+    dimensions: {
+      length: { type: Number, default: 10 },
+      breadth: { type: Number, default: 10 },
+      height: { type: Number, default: 10 }
+    }
   },
   
   // Tracking history
@@ -247,7 +268,7 @@ orderSchema.methods.addTrackingUpdate = function(status, message, location, upda
 };
 
 orderSchema.methods.canBeCancelled = function() {
-  return ['placed', 'confirmed', 'processing'].includes(this.status);
+  return ['placed', 'confirmed', 'processing', 'ready_to_ship'].includes(this.status);
 };
 
 orderSchema.methods.canBeReturned = function() {
@@ -262,6 +283,7 @@ orderSchema.virtual('displayStatus').get(function() {
     'placed': 'Order Placed',
     'confirmed': 'Order Confirmed',
     'processing': 'Processing',
+    'ready_to_ship': 'Ready to Ship',
     'shipped': 'Shipped',
     'out_for_delivery': 'Out for Delivery',
     'delivered': 'Delivered',

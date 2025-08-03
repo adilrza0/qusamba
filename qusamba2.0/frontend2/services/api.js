@@ -3,30 +3,38 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/a
 
 // Generic API request function
 const apiRequest = async (endpoint, options = {}) => {
-  const token = localStorage.getItem('token');
+  // Safely get token from localStorage (handles SSR)
+  const token = typeof window !== 'undefined' ? localStorage.getItem('qusamba-token') : null;
+  
+  // Prepare base headers
+  const baseHeaders = {};
+  
+  // Add authorization header if token exists
+  if (token) {
+    baseHeaders.Authorization = `Bearer ${token}`;
+  }
+  
+  // Add Content-Type only if not FormData (FormData sets its own Content-Type)
+  if (!(options.body instanceof FormData)) {
+    baseHeaders['Content-Type'] = 'application/json';
+  }
   
   const config = {
     headers: {
-      'Content-Type': 'application/json',
-      ...(token && { Authorization: `Bearer ${token}` }),
+      ...baseHeaders,
       ...options.headers,
     },
     ...options,
   };
 
-  try {
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
-    
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'API request failed');
-    }
-    
-    return await response.json();
-  } catch (error) {
-    console.error('API Request Error:', error);
-    throw error;
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
+  
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'API request failed' }));
+    throw new Error(error.message || 'API request failed');
   }
+  
+  return await response.json();
 };
 
 // Authentication API
@@ -98,9 +106,6 @@ export const productsAPI = {
   create: async (productData) => {
     return apiRequest('/products', {
       method: 'POST',
-      headers: {
-        // Remove Content-Type for FormData
-      },
       body: productData, // FormData object
     });
   },
@@ -108,9 +113,6 @@ export const productsAPI = {
   update: async (id, productData) => {
     return apiRequest(`/products/${id}`, {
       method: 'PUT',
-      headers: {
-        // Remove Content-Type for FormData
-      },
       body: productData, // FormData object
     });
   },
@@ -170,9 +172,6 @@ export const categoriesAPI = {
   create: async (categoryData) => {
     return apiRequest('/categories', {
       method: 'POST',
-      headers: {
-        // Remove Content-Type for FormData
-      },
       body: categoryData, // FormData object
     });
   },
@@ -180,9 +179,6 @@ export const categoriesAPI = {
   update: async (id, categoryData) => {
     return apiRequest(`/categories/${id}`, {
       method: 'PUT',
-      headers: {
-        // Remove Content-Type for FormData
-      },
       body: categoryData, // FormData object
     });
   },
@@ -222,7 +218,7 @@ export const ordersAPI = {
 
   getUserOrders: async (params = {}) => {
     const queryString = new URLSearchParams(params).toString();
-    return apiRequest(`/orders/user${queryString ? `?${queryString}` : ''}`);
+    return apiRequest(`/orders${queryString ? `?${queryString}` : ''}`);
   },
 
   updateStatus: async (id, status) => {
@@ -241,24 +237,59 @@ export const ordersAPI = {
   // Admin only
   getAllOrders: async (params = {}) => {
     const queryString = new URLSearchParams(params).toString();
-    return apiRequest(`/admin/orders${queryString ? `?${queryString}` : ''}`);
+    return apiRequest(`/orders/admin/all${queryString ? `?${queryString}` : ''}`);
   },
 
   getOrderStats: async () => {
     return apiRequest('/admin/orders/stats');
   },
 
-  updateOrderStatus: async (id, status) => {
-    return apiRequest(`/admin/orders/${id}/status`, {
-      method: 'PUT',
-      body: JSON.stringify({ status }),
+  updateOrderStatus: async (id, data) => {
+    return apiRequest(`/orders/admin/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+
+  bulkUpdateOrderStatus: async (data) => {
+    return apiRequest('/orders/admin/bulk-update', {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+
+  getShippingStats: async () => {
+    return apiRequest('/orders/admin/stats');
+  },
+
+  trackOrder: async (orderNumber) => {
+    return apiRequest(`/orders/track/${orderNumber}`);
+  },
+
+  // Order approval functions
+  getOrdersPendingApproval: async (params = {}) => {
+    const queryString = new URLSearchParams(params).toString();
+    return apiRequest(`/orders/admin/pending-approval${queryString ? `?${queryString}` : ''}`);
+  },
+
+  approveOrder: async (orderId, data = {}) => {
+    return apiRequest(`/orders/admin/${orderId}/approve`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  bulkApproveOrders: async (data) => {
+    return apiRequest('/orders/admin/bulk-approve', {
+      method: 'POST',
+      body: JSON.stringify(data),
     });
   },
 };
 
 // Payments API
 export const paymentsAPI = {
-  createPaymentIntent: async (amount, currency = 'usd') => {
+  createPaymentIntent: async (amount, currency = 'inr') => {
     return apiRequest('/payments/create-payment-intent', {
       method: 'POST',
       body: JSON.stringify({ amount, currency }),
@@ -302,24 +333,26 @@ export const cartAPI = {
     return apiRequest('/cart');
   },
 
-  add: async (productId, quantity = 1) => {
+  add: async (productId, quantity = 1, color = null, size = null) => {
+    console.log('Adding item to cart:', { productId, quantity, color, size });
     return apiRequest('/cart/add', {
       method: 'POST',
-      body: JSON.stringify({ productId, quantity }),
+      body: JSON.stringify({ productId, quantity, color, size }),
     });
   },
 
-  update: async (productId, quantity) => {
+  update: async (productId, quantity, color = null, size = null) => {
     return apiRequest('/cart/update', {
       method: 'PUT',
-      body: JSON.stringify({ productId, quantity }),
+      body: JSON.stringify({ productId, quantity, color, size }),
     });
   },
 
-  remove: async (productId) => {
+  remove: async (productId, color = null, size = null) => {
+    console.log('Removing item from cart:', { productId, color, size });
     return apiRequest('/cart/remove', {
       method: 'DELETE',
-      body: JSON.stringify({ productId }),
+      body: JSON.stringify({ productId, color, size }),
     });
   },
 
@@ -391,6 +424,39 @@ export const adminAPI = {
   },
 };
 
+// Address API
+export const addressAPI = {
+  getAll: async () => {
+    return apiRequest('/addresses');
+  },
+
+  add: async (addressData) => {
+    return apiRequest('/addresses', {
+      method: 'POST',
+      body: JSON.stringify(addressData),
+    });
+  },
+
+  update: async (addressId, addressData) => {
+    return apiRequest(`/addresses/${addressId}`, {
+      method: 'PUT',
+      body: JSON.stringify(addressData),
+    });
+  },
+
+  delete: async (addressId) => {
+    return apiRequest(`/addresses/${addressId}`, {
+      method: 'DELETE',
+    });
+  },
+
+  setDefault: async (addressId) => {
+    return apiRequest(`/addresses/${addressId}/default`, {
+      method: 'PATCH',
+    });
+  },
+};
+
 // Utility functions
 export const uploadImage = async (file) => {
   const formData = new FormData();
@@ -398,9 +464,6 @@ export const uploadImage = async (file) => {
   
   return apiRequest('/upload/image', {
     method: 'POST',
-    headers: {
-      // Remove Content-Type for FormData
-    },
     body: formData,
   });
 };
@@ -411,9 +474,6 @@ export const uploadMultipleImages = async (files) => {
   
   return apiRequest('/upload/images', {
     method: 'POST',
-    headers: {
-      // Remove Content-Type for FormData
-    },
     body: formData,
   });
 };
@@ -424,7 +484,7 @@ export const handleAPIError = (error) => {
   
   if (error.message.includes('unauthorized') || error.message.includes('401')) {
     // Handle unauthorized access
-    localStorage.removeItem('token');
+    localStorage.removeItem('qusamba-token');
     window.location.href = '/login';
   }
   

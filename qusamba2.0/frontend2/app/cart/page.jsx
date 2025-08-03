@@ -8,80 +8,74 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { CartProvider, useCart } from "@/contexts/cart-context"
+import { useCart } from "@/contexts/cart-context"
+import { cartAPI } from "@/services/api"
+import { useToast } from "@/components/ui/use-toast"
+
+
 
 export default function CartPage() {
   const { state, dispatch } = useCart()
+  console.log(state, "cart state")
+  const { toast } = useToast()
 
-  const updateQuantity = (id, newQuantity) => {
-    dispatch({
+  const updateQuantity = async(item, newQuantity) => {
+    try {
+      await cartAPI.update(item.id, newQuantity, item.color, item.size)
+      dispatch({
       type: "UPDATE_QUANTITY",
-      payload: { id, quantity: newQuantity },
-    })
+      payload: { 
+        id: item.id, 
+        color: item.color, 
+        size: item.size, 
+        quantity: newQuantity 
+      },
+      })
+      toast({
+          title: 'Cart Updated',
+          description: 'Item quantity updated successfully.',
+          variant: 'success'
+        })
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to update item quantity. Please try again.',
+        variant: 'destructive'
+      })
+    }
+    
   }
 
-  const removeItem = (id) => {
-    dispatch({
+  const removeItem = async(item) => {
+    try {
+      await cartAPI.remove(item.id, item.color, item.size)
+      dispatch({
       type: "REMOVE_ITEM",
-      payload: id,
-    })
+      payload: {
+        id: item.id,
+        color: item.color,
+        size: item.size
+      }
+      })
+      toast({
+        title: 'Item Removed',
+        description: 'Item removed successfully.',
+        variant: 'success'
+      })
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to remove item from cart. Please try again.',
+        variant: 'destructive'
+      })
+    }
   }
 
   const shipping = state.total > 100 ? 0 : 10.0
   const total = state.total + shipping
 
   return (
-    <CartProvider>
-    (<div className="flex flex-col min-h-screen">
-      <header className="border-b">
-        <div className="container flex h-16 items-center justify-between px-4 md:px-6">
-          <Link href="/" className="flex items-center gap-2">
-            <Image src="/logo.png" alt="Qusamba Logo" width={120} height={40} />
-          </Link>
-          <nav className="hidden md:flex gap-6">
-            <Link
-              href="/"
-              className="text-sm font-medium hover:underline underline-offset-4">
-              Home
-            </Link>
-            <Link
-              href="/products"
-              className="text-sm font-medium hover:underline underline-offset-4">
-              Shop
-            </Link>
-            <Link
-              href="/about"
-              className="text-sm font-medium hover:underline underline-offset-4">
-              About
-            </Link>
-            <Link
-              href="/contact"
-              className="text-sm font-medium hover:underline underline-offset-4">
-              Contact
-            </Link>
-          </nav>
-          <div className="flex items-center gap-4">
-            <Link href="/wishlist">
-              <Button variant="ghost" size="icon" aria-label="Wishlist">
-                <Heart className="h-5 w-5" />
-                <span className="sr-only">Wishlist</span>
-              </Button>
-            </Link>
-            <Link href="/cart">
-              <Button variant="ghost" size="icon" aria-label="Cart" className="relative">
-                <ShoppingBag className="h-5 w-5" />
-                {state.itemCount > 0 && (
-                  <span
-                    className="absolute -top-2 -right-2 bg-primary text-primary-foreground text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                    {state.itemCount}
-                  </span>
-                )}
-                <span className="sr-only">Cart</span>
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </header>
+    <div className="flex flex-col min-h-screen">
       <main className="flex-1">
         <div className="container px-4 py-8 md:px-6 md:py-12">
           <div className="flex flex-col md:flex-row gap-8">
@@ -114,11 +108,13 @@ export default function CartPage() {
                           <TableCell>
                             <div className="flex items-center gap-4">
                               <Image
-                                src={item.image || "/placeholder.svg"}
+                                src={item?.images?.[0]?.url || "/placeholder.svg"}
                                 alt={item.name}
                                 width={80}
                                 height={80}
                                 className="rounded-md" />
+                               
+
                               <div>
                                 <p className="font-medium">{item.name}</p>
                                 <p className="text-sm text-muted-foreground">
@@ -127,35 +123,38 @@ export default function CartPage() {
                               </div>
                             </div>
                           </TableCell>
-                          <TableCell>${item.price.toFixed(2)}</TableCell>
+                          
+                          <TableCell>₹{item.price.toFixed(2)}</TableCell>
                           <TableCell>
                             <div className="flex items-center">
                               <Button
+                                disabled={item.quantity <= 1}
                                 variant="outline"
                                 size="icon"
                                 className="h-8 w-8"
-                                onClick={() => updateQuantity(item.id, item.quantity - 1)}>
+                                onClick={() => updateQuantity(item, item.quantity - 1)}>
                                 <Minus className="h-3 w-3" />
                                 <span className="sr-only">Decrease quantity</span>
                               </Button>
                               <span className="w-12 text-center">{item.quantity}</span>
                               <Button
+
                                 variant="outline"
                                 size="icon"
                                 className="h-8 w-8"
-                                onClick={() => updateQuantity(item.id, item.quantity + 1)}>
+                                onClick={() => updateQuantity(item, item.quantity + 1)}>
                                 <Plus className="h-3 w-3" />
                                 <span className="sr-only">Increase quantity</span>
                               </Button>
                             </div>
                           </TableCell>
-                          <TableCell className="font-medium">${(item.price * item.quantity).toFixed(2)}</TableCell>
+                          <TableCell className="font-medium">₹{(item.price * item.quantity).toFixed(2)}</TableCell>
                           <TableCell>
                             <Button
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8"
-                              onClick={() => removeItem(item.id)}>
+                              onClick={() => removeItem(item)}>
                               <Trash2 className="h-4 w-4" />
                               <span className="sr-only">Remove item</span>
                             </Button>
@@ -179,17 +178,17 @@ export default function CartPage() {
                   <div className="space-y-4">
                     <div className="flex justify-between">
                       <span>Subtotal</span>
-                      <span>${state.total.toFixed(2)}</span>
+                      <span>₹{state.total.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span>Shipping</span>
-                      <span>{shipping === 0 ? "Free" : `$${shipping.toFixed(2)}`}</span>
+                      <span>{shipping === 0 ? "Free" : `₹${shipping.toFixed(2)}`}</span>
                     </div>
-                    {shipping === 0 && <p className="text-sm text-green-600">🎉 Free shipping on orders over $100!</p>}
+                    {shipping === 0 && <p className="text-sm text-green-600">🎉 Free shipping on orders over ₹100!</p>}
                     <Separator />
                     <div className="flex justify-between font-semibold text-lg">
                       <span>Total</span>
-                      <span>${total.toFixed(2)}</span>
+                      <span>₹{total.toFixed(2)}</span>
                     </div>
                     <div className="pt-4">
                       <label htmlFor="coupon" className="block text-sm font-medium mb-2">
@@ -213,7 +212,6 @@ export default function CartPage() {
         </div>
       </main>
       
-    </div>)
-    </CartProvider>
+    </div>
   );
 }

@@ -2,7 +2,7 @@ const Product = require('../models/Product');
 const { validationResult } = require('express-validator');
 
 exports.getAll = async (req, res) => {
-  
+  console.log('Get all products endpoint hit');
   try {
     const { page = 1, limit = 10, category, priceMin, priceMax, sort = '-createdAt' } = req.query;
     const skip = (page - 1) * limit;
@@ -25,7 +25,7 @@ exports.getAll = async (req, res) => {
       .limit(Number(limit));
 
      
-      
+    console.log(`Fetched ${products.length} products for page ${page} with limit ${limit}`);
     const total = await Product.countDocuments(query);
     
     res.json({
@@ -91,15 +91,67 @@ exports.create = async (req, res) => {
       productData.slug = productData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
     }
     
+    // Parse variants data if provided
+    if (productData.variants && typeof productData.variants === 'string') {
+      try {
+        productData.variants = JSON.parse(productData.variants);
+        console.log('Parsed variants:', productData.variants);
+      } catch (error) {
+        console.error('Error parsing variants:', error);
+        productData.variants = [];
+      }
+    }
+    
     // Handle image uploads
     if (req.files && req.files.length > 0) {
       console.log('Processing uploaded files:', req.files.length);
-      productData.images = req.files.map(file => ({
-        url: file.path,
-        public_id: file.filename,
-        alt: req.body.name || 'Product image'
-      }));
+      const mainImages = [];
+      const variantImagesMap = {};
+      
+      req.files.forEach(file => {
+        const variantMatch = file.fieldname.match(/^variant_(\d+)_images$/);
+        if (variantMatch) {
+          const variantIndex = Number(variantMatch[1]);
+          if (!variantImagesMap[variantIndex]) {
+            variantImagesMap[variantIndex] = [];
+          }
+          variantImagesMap[variantIndex].push({
+            url: file.path,
+            public_id: file.filename,
+            alt: req.body.name || 'Variant image'
+          });
+        } else {
+          mainImages.push({
+            url: file.path,
+            public_id: file.filename,
+            alt: req.body.name || 'Product image'
+          });
+        }
+      });
+      
+      // Set main images or default placeholder if no main images
+      if (mainImages.length > 0) {
+        productData.images = mainImages;
+      } else if (Object.keys(variantImagesMap).length === 0) {
+        // Only set placeholder if no images at all
+        productData.images = [{
+          url: 'https://via.placeholder.com/400x400?text=No+Image',
+          public_id: 'placeholder',
+          alt: 'Placeholder image'
+        }];
+      } else {
+        productData.images = [];
+      }
+      
+      if (productData.variants) {
+        productData.variants = productData.variants.map((variant, idx) => ({
+          ...variant,
+          images: variantImagesMap[idx] || []
+        }));
+      }
+      
       console.log('Processed images:', productData.images);
+      console.log('Processed variants:', productData.variants);
     } else {
       console.log('No files uploaded - setting default image');
       // If no images uploaded, set a default placeholder
@@ -173,20 +225,59 @@ exports.update = async (req, res) => {
       updateData.slug = updateData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
     }
     
+    // Parse variants data if provided
+    if (updateData.variants && typeof updateData.variants === 'string') {
+      try {
+        updateData.variants = JSON.parse(updateData.variants);
+        console.log('Parsed variants for update:', updateData.variants);
+      } catch (error) {
+        console.error('Error parsing variants for update:', error);
+        updateData.variants = [];
+      }
+    }
+    
     // Handle new image uploads
     if (req.files && req.files.length > 0) {
-      const newImages = req.files.map(file => ({
-        url: file.path,
-        public_id: file.filename,
-        alt: req.body.name || 'Product image'
-      }));
+      const mainImages = [];
+      const variantImagesMap = {};
       
-      // If keepExisting is true, append to existing images, otherwise replace
-      if (req.body.keepExisting === 'true') {
-        const existingProduct = await Product.findById(req.params.id);
-        updateData.images = [...(existingProduct.images || []), ...newImages];
-      } else {
-        updateData.images = newImages;
+      req.files.forEach(file => {
+        const variantMatch = file.fieldname.match(/^variant_(\d+)_images$/);
+        if (variantMatch) {
+          const variantIndex = Number(variantMatch[1]);
+          if (!variantImagesMap[variantIndex]) {
+            variantImagesMap[variantIndex] = [];
+          }
+          variantImagesMap[variantIndex].push({
+            url: file.path,
+            public_id: file.filename,
+            alt: req.body.name || 'Variant image'
+          });
+        } else {
+          mainImages.push({
+            url: file.path,
+            public_id: file.filename,
+            alt: req.body.name || 'Product image'
+          });
+        }
+      });
+      
+      // Handle main product images
+      if (mainImages.length > 0) {
+        if (req.body.keepExisting === 'true') {
+          const existingProduct = await Product.findById(req.params.id);
+          updateData.images = [...(existingProduct.images || []), ...mainImages];
+        } else {
+          updateData.images = mainImages;
+        }
+      }
+      
+      // Handle variant images
+      if (updateData.variants && Object.keys(variantImagesMap).length > 0) {
+        updateData.variants = updateData.variants.map((variant, idx) => ({
+          ...variant,
+          images: variantImagesMap[idx] || variant.images || []
+        }));
       }
     }
     

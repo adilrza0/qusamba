@@ -8,7 +8,7 @@ const {
   search,
   addReview
 } = require('../controllers/productController');
-const { uploadMultiple: uploadImages } = require('../middleware/uploadMiddleware');
+const { uploadAny: uploadImages } = require('../middleware/uploadMiddleware');
 const { protect, adminOnly } = require('../middleware/authMiddleware');
 const { body, validationResult } = require('express-validator');
 
@@ -18,6 +18,7 @@ const router = express.Router();
 const validateProduct = [
   (req, res, next) => {
     console.log('validateProduct: Request body received:', req.body);
+    console.log('validateProduct: Request files received:', req.files ? req.files.length : 0);
     next();
   },
   body('name').notEmpty().withMessage('Product name is required'),
@@ -27,6 +28,29 @@ const validateProduct = [
   body('stock').isInt({ min: 0 }).withMessage('Stock must be a non-negative integer'),
   (req, res, next) => {
     console.log('validateProduct: Running validation checks');
+    
+    // Validate variants if provided
+    if (req.body.variants) {
+      console.log('validateProduct: Variants found, validating...');
+      try {
+        const variants = typeof req.body.variants === 'string' ? JSON.parse(req.body.variants) : req.body.variants;
+        if (Array.isArray(variants)) {
+          for (const variant of variants) {
+            if (!variant.color || !variant.size || !variant.price || !variant.stock || !variant.sku) {
+              return res.status(400).json({ 
+                errors: [{ msg: 'Each variant must have color, size, price, stock, and sku' }] 
+              });
+            }
+          }
+        }
+      } catch (error) {
+        
+        return res.status(400).json({ 
+          errors: [{ msg: 'Invalid variants data format' }] 
+        });
+      }
+    }
+    console.log('validateProduct: Variants validation passed');
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       console.log('validateProduct: Validation errors found:', errors.array());

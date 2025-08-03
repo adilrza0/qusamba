@@ -10,18 +10,23 @@ import { Card, CardContent, CardFooter } from "@/components/ui/card"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { UserMenu } from "@/components/user-menu"
 import { useToast } from "@/components/ui/use-toast"
 
 // Custom hooks
 import { useApiEffect, useSearch } from "@/hooks/useApi"
 import { useAuth } from "@/contexts/auth-context"
+import { useCart } from "@/contexts/cart-context"
+import { useWishlist } from "@/contexts/wishlist-context"
 import { productsAPI as products, categoriesAPI as categories, cartAPI as cart, wishlistAPI as wishlist } from "@/services/api"
 
 export default function ProductsPage() {
   const { state } = useAuth()
   const { user } = state
   const { toast } = useToast()
+  const { state: cartState, dispatch: cartDispatch } = useCart()
+  const { state: wishlistState, dispatch: wishlistDispatch } = useWishlist()
   
   // State for products and filters
   const [productsList, setProductsList] = useState([])
@@ -32,56 +37,28 @@ export default function ProductsPage() {
   const [sortBy, setSortBy] = useState('name')
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
-  const [wishlistItems, setWishlistItems] = useState([])
-  const [cartItems, setCartItems] = useState([])
   const [processingActions, setProcessingActions] = useState({})
+  const [selectedSizes, setSelectedSizes] = useState({})
   
   // Fetch products with filters
   const fetchProducts = async () => {
     try {
       setLoading(true)
-      // Mock data for development
-      const mockProducts = [
-        {
-          _id: '1',
-          name: 'Golden Bangle Set',
-          description: 'Beautiful handcrafted golden bangles',
-          price: 299.99,
-          rating: 4.5,
-          images: [{ url: '/traditional.webp' }],
-          variants: [{ color: 'Gold' }, { color: 'Silver' }]
-        },
-        {
-          _id: '2',
-          name: 'Silver Crystal Bangles',
-          description: 'Elegant silver bangles with crystals',
-          price: 199.99,
-          rating: 4.8,
-          images: [{ url: '/traditional.webp' }],
-          variants: [{ color: 'Silver' }]
-        }
-      ]
-      
-      // Try API call, fallback to mock data
-      try {
-        const params = {
-          page: currentPage,
-          limit: 12,
-          search: searchTerm,
-          category: selectedCategory !== 'all' ? selectedCategory : undefined,
-          sort: sortBy
-        }
-        const response = await products.getAll(params)
-        console.log(response)
-        setProductsList(response.products)
-        setTotalPages(response.pagination.pages)
-      } catch (apiError) {
-        console.warn('API not available, using mock data:', apiError)
-        setProductsList(mockProducts)
-        setTotalPages(1)
+      const params = {
+        page: currentPage,
+        limit: 12,
+        search: searchTerm,
+        category: selectedCategory !== 'all' ? selectedCategory : undefined,
+        sort: sortBy
       }
+      const response = await products.getAll(params)
+      console.log(response)
+      setProductsList(response.products || [])
+      setTotalPages(response.pagination?.pages || 1)
     } catch (error) {
       console.error('Error fetching products:', error)
+      setProductsList([])
+      setTotalPages(1)
       toast({
         title: 'Error',
         description: 'Failed to load products. Please try again.',
@@ -95,45 +72,26 @@ export default function ProductsPage() {
   // Fetch categories
   const fetchCategories = async () => {
     try {
-      // Mock data for development
-      const mockCategories = [
-        { _id: '1', name: 'Traditional' },
-        { _id: '2', name: 'Modern' },
-        { _id: '3', name: 'Festive' }
-      ]
-      
-      try {
-        const response = await categories.getAll()
-        setCategoriesList(response.data.categories)
-      } catch (apiError) {
-        console.warn('Categories API not available, using mock data:', apiError)
-        setCategoriesList(mockCategories)
-      }
+      const response = await categories.getAll()
+      setCategoriesList(response.data?.categories || [])
     } catch (error) {
       console.error('Error fetching categories:', error)
+      setCategoriesList([])
     }
   }
   
-  // Fetch user wishlist and cart if authenticated
-  const fetchUserData = async () => {
+  // Sync with backend when user logs in
+  const syncUserData = async () => {
     if (!user) return
     
     try {
-      try {
-        const [wishlistResponse, cartResponse] = await Promise.all([
-          wishlist.get(),
-          cart.get()
-        ])
-        
-        setWishlistItems(wishlistResponse.data.items.map(item => item.product._id))
-        setCartItems(cartResponse.data.items)
-      } catch (apiError) {
-        console.warn('User data API not available, using empty data:', apiError)
-        setWishlistItems([])
-        setCartItems([])
-      }
-    } catch (error) {
-      console.error('Error fetching user data:', error)
+      const [wishlistResponse, cartResponse] = await Promise.all([
+        wishlist.get(),
+        cart.get()
+      ])
+      console.log('Backend data available:', { wishlistResponse, cartResponse })
+    } catch (apiError) {
+      console.error('Error syncing user data:', apiError)
     }
   }
   
@@ -151,27 +109,40 @@ export default function ProductsPage() {
     setProcessingActions(prev => ({ ...prev, [`wishlist-${productId}`]: true }))
     
     try {
-      const isInWishlist = wishlistItems.includes(productId)
+      const product = productsList.find(p => p._id === productId)
+      if (!product) return
       
-      try {
-        if (isInWishlist) {
-          await wishlist.remove(productId)
-        } else {
-          await wishlist.add(productId)
-        }
-      } catch (apiError) {
-        console.warn('Wishlist API not available, updating locally:', apiError)
+      const isInWishlist = wishlistState.items.some(item => item.id === productId)
+      
+      if (isInWishlist) {
+        await wishlist.remove(productId)
+      } else {
+        await wishlist.add(productId)
       }
       
-      // Update local state regardless of API success
+      // Update context state
       if (isInWishlist) {
-        setWishlistItems(prev => prev.filter(id => id !== productId))
+        wishlistDispatch({
+          type: "REMOVE_ITEM",
+          payload: productId
+        })
         toast({
           title: 'Removed from wishlist',
           description: 'Product removed from your wishlist.'
         })
       } else {
-        setWishlistItems(prev => [...prev, productId])
+        wishlistDispatch({
+          type: "ADD_ITEM",
+          payload: {
+            id: product._id,
+            name: product.name,
+            price: product.price,
+            image: product.images?.[0]?.url,
+            description: product.description,
+            colors: product.variants?.map(v => v.color) || ['Default'],
+            sizes: product.variants?.map(v => v.size) || ['Default']
+          }
+        })
         toast({
           title: 'Added to wishlist',
           description: 'Product added to your wishlist.'
@@ -202,19 +173,29 @@ export default function ProductsPage() {
     setProcessingActions(prev => ({ ...prev, [`cart-${productId}`]: true }))
     
     try {
-      try {
-        await cart.add(productId, 1)
-        // Update cart items
-        const cartResponse = await cart.get()
-        setCartItems(cartResponse.data.items)
-      } catch (apiError) {
-        console.warn('Cart API not available, updating locally:', apiError)
-        // Add to local cart state
-        const product = productsList.find(p => p._id === productId)
-        if (product) {
-          setCartItems(prev => [...prev, { product, quantity: 1 }])
+      const product = productsList.find(p => p._id === productId)
+      if (!product) return
+      
+      // Use selected size or default
+      const selectedVariantId = selectedSizes[productId]
+      const selectedVariant = selectedVariantId ? product.variants?.find(v => v._id === selectedVariantId) : null
+      const defaultColor = selectedVariant?.color || product.variants?.[0]?.color || 'Default'
+      const defaultSize = selectedVariant?.size || product.variants?.[0]?.size || 'Default'
+      
+      await cart.add(productId, 1, defaultColor, defaultSize)
+      
+      // Add to context
+      cartDispatch({
+        type: "ADD_ITEM",
+        payload: {
+          id: product._id,
+          name: product.name,
+          price: product.price,
+          image: product.images?.[0]?.url,
+          color: defaultColor,
+          size: defaultSize
         }
-      }
+      })
       
       toast({
         title: 'Added to cart',
@@ -238,7 +219,7 @@ export default function ProductsPage() {
   
   useEffect(() => {
     fetchCategories()
-    fetchUserData()
+    syncUserData()
   }, [user])
   
   // Debounced search
@@ -315,7 +296,7 @@ export default function ProductsPage() {
           <div
             className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
             {productsList?.map((product) => (
-              <Card key={product._id} className="overflow-hidden">
+              <Card key={product._id} className="overflow-hidden bg-accent">
                 <div className="relative">
                   <Button
                     variant="ghost"
@@ -325,7 +306,7 @@ export default function ProductsPage() {
                     onClick={() => handleWishlistToggle(product._id)}
                     disabled={processingActions[`wishlist-${product._id}`]}
                   >
-                    <Heart className={`h-5 w-5 ${wishlistItems.includes(product._id) ? 'fill-red-500 text-red-500' : ''}`} />
+                    <Heart className={`h-5 w-5 ${wishlistState.items.some(item => item.id === product._id) ? 'fill-red-500 text-red-500' : ''}`} />
                     <span className="sr-only">Add to wishlist</span>
                   </Button>
                   <Link href={`/products/${product._id}`}>
@@ -344,7 +325,7 @@ export default function ProductsPage() {
                   <p className="text-sm text-muted-foreground mt-1">{product.description}</p>
                   <div className="mt-2 flex items-center justify-between">
                     <div className="flex flex-col">
-                      <p className="font-medium">${product.price.toFixed(2)}</p>
+                      <p className="font-medium">?{product.price.toFixed(2)}</p>
                       {product.rating && (
                         <div className="flex items-center gap-1 mt-1">
                           <span className="text-sm text-yellow-500">★</span>
@@ -352,12 +333,45 @@ export default function ProductsPage() {
                         </div>
                       )}
                     </div>
-                    <div className="flex gap-1">
-                      {product.variants?.slice(0, 3).map((variant, index) => (
-                        <span key={index} className="text-xs text-muted-foreground">
-                          {variant.color}
-                        </span>
-                      ))}
+                    <div className="flex flex-col gap-2">
+                      {/* Size variants display */}
+                      <div className="flex gap-1 flex-wrap">
+                        {product.variants?.slice(0, 3).map((variant, index) => (
+                          <span key={index} className="text-xs text-muted-foreground">
+                            {variant.color} - {variant.size}
+                          </span>
+                        ))}
+                        {product.variants?.length > 3 && (
+                          <span className="text-xs text-muted-foreground">+{product.variants.length - 3} more</span>
+                        )}
+                      </div>
+                      
+                      {/* Size selection dropdown */}
+                      {product.variants && product.variants.length > 0 && (
+                        <Select 
+                          value={selectedSizes[product._id] || ""} 
+                          onValueChange={(value) => {
+                            setSelectedSizes(prev => ({ ...prev, [product._id]: value }))
+                          }}
+                        >
+                          <SelectTrigger className="w-full h-8 text-xs">
+                            <SelectValue placeholder="Select size" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {product.variants.map((variant) => (
+                              <SelectItem key={variant._id} value={variant._id}>
+                                Size: {variant.size} | Color: {variant.color} - ?{variant.price?.toFixed(2) || product.price.toFixed(2)}
+                                {variant.stock <= 5 && variant.stock > 0 && (
+                                  <span className="text-orange-500 ml-2">({variant.stock} left)</span>
+                                )}
+                                {variant.stock === 0 && (
+                                  <span className="text-red-500 ml-2">(Out of stock)</span>
+                                )}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
                     </div>
                   </div>
                 </CardContent>

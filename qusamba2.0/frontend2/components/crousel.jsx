@@ -69,9 +69,11 @@ export function Carousel() {
             <div className="text-center text-white">
               <h2 className="text-4xl md:text-6xl font-bold mb-4">{item.title}</h2>
               <p className="text-xl md:text-2xl mb-8">{item.description}</p>
+              <Link href={"/products"}>
               <Button size="lg" className="bg-primary hover:bg-primary-dark text-white">
                 Shop Now
               </Button>
+              </Link>
             </div>
           </div>
         </div>

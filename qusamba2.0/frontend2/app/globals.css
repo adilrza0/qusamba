@@ -4,6 +4,33 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  --animate-shimmer: shimmer 2s ease-in-out infinite;
+  --animate-slide-left: slide-left 3s ease-in-out infinite;
+  
+  @keyframes shimmer {
+					0% {
+						background-position: -200% 0;
+					}
+					100% {
+						background-position: 200% 0;
+					}
+				};
+  
+  @keyframes slide-left {
+    0% {
+      transform: translateX(-100%);
+    }
+    50% {
+      transform: translateX(100%);
+    }
+    100% {
+      transform: translateX(-100%);
+    }
+  };
+ 
+
+
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
@@ -41,6 +68,9 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+
+   --gradient-rose: linear-gradient(135deg, hsl(345 85% 55%), hsl(345 75% 75%));
+  --gradient-banner: linear-gradient(90deg, hsl(345 85% 55%), hsl(345 75% 65%), hsl(345 85% 55%));
 }
 
 :root {
@@ -97,6 +127,7 @@
   --chart-4: oklch(70% 0.18 320);
   --chart-5: oklch(62% 0.22 345);
 }
+
 
 @layer base {
   * {

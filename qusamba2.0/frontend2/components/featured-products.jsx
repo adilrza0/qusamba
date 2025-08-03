@@ -7,6 +7,8 @@ import { Heart } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter } from "@/components/ui/card"
 import { useCart } from "@/contexts/cart-context"
+import { useWishlist } from "@/contexts/wishlist-context"
+import { toast } from "sonner"
 
 // Mock data for featured products
 const featuredProducts = [
@@ -49,10 +51,11 @@ const featuredProducts = [
 ]
 
 export function FeaturedProducts() {
-  const { dispatch } = useCart()
+  const { dispatch: cartDispatch } = useCart()
+  const { dispatch: wishlistDispatch } = useWishlist()
 
   const addToCart = (product) => {
-    dispatch({
+    cartDispatch({
       type: "ADD_ITEM",
       payload: {
         id: product.id,
@@ -63,6 +66,23 @@ export function FeaturedProducts() {
         size: product.sizes[0], // Default to first size
       },
     })
+    toast.success(`${product.name} added to cart!`)
+  }
+
+  const addToWishlist = (product) => {
+    wishlistDispatch({
+      type: "ADD_ITEM",
+      payload: {
+        id: product.id,
+        name: product.name,
+        description: product.description,
+        price: product.price,
+        image: product.image,
+        colors: product.colors,
+        sizes: product.sizes,
+      },
+    })
+    toast.success(`${product.name} added to wishlist!`)
   }
 
   return (
@@ -85,7 +105,8 @@ export function FeaturedProducts() {
                   variant="ghost"
                   size="icon"
                   className="absolute top-2 right-2 z-10 rounded-full bg-white/80 backdrop-blur-sm"
-                  aria-label="Add to wishlist">
+                  aria-label="Add to wishlist"
+                  onClick={() => addToWishlist(product)}>
                   <Heart className="h-5 w-5" />
                   <span className="sr-only">Add to wishlist</span>
                 </Button>
@@ -104,7 +125,7 @@ export function FeaturedProducts() {
                 </Link>
                 <p className="text-sm text-muted-foreground mt-1">{product.description}</p>
                 <div className="mt-2 flex items-center justify-between">
-                  <p className="font-medium">${product.price.toFixed(2)}</p>
+                  <p className="font-medium">?{product.price.toFixed(2)}</p>
                   <div className="flex gap-1">
                     {product.colors.map((color) => (
                       <span key={color} className="text-xs text-muted-foreground">

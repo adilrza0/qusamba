@@ -14,60 +14,62 @@ import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import {  productsAPI as api } from "@/services/api"
-import { useApi, useMutation } from "@/hooks/useApi"
+import { productsAPI, cartAPI, wishlistAPI } from "@/services/api"
+import { useApiEffect, useMutation } from "@/hooks/useApi"
 
 
 export default function ProductPage() {
   const { id } = useParams()
   const [selectedVariant, setSelectedVariant] = useState(null)
+  const [selectedSize, setSelectedSize] = useState(null)
+  const [selectedColor, setSelectedColor] = useState(null)
   const [quantity, setQuantity] = useState(1)
   const [activeImage, setActiveImage] = useState(0)
   
   // Fetch product data
-  const { data: product, loading, error } = useApi(
-    () => api.products.getById(id),
+  const { data: product, loading, error } = useApiEffect(
+    () => productsAPI.getById(id),
     [id]
   )
-  
+  console.log("Product data:", product, "Loading:", loading, "Error:", error)
   // Fetch related products
-  const { data: relatedProducts } = useApi(
-    () => api.products.getAll({ limit: 4, category: product?.category?._id }),
+  const { data: relatedProducts } = useApiEffect(
+    () => productsAPI.getAll({ limit: 4, category: product?.category?._id }),
     [product?.category?._id]
   )
   
   // Add to cart mutation
   const addToCartMutation = useMutation(
-    ({ productId, variantId, quantity }) => api.cart.addItem(productId, variantId, quantity),
-    {
-      onSuccess: () => {
-        toast.success("Product added to cart!")
-      },
-      onError: (error) => {
-        toast.error(error.message || "Failed to add to cart")
-      }
-    }
+    ({ productId, quantity }) => cartAPI.add(productId, quantity)
   )
   
   // Add to wishlist mutation
   const addToWishlistMutation = useMutation(
-    (productId) => api.wishlist.addItem(productId),
-    {
-      onSuccess: () => {
-        toast.success("Product added to wishlist!")
-      },
-      onError: (error) => {
-        toast.error(error.message || "Failed to add to wishlist")
-      }
-    }
+    (productId) => wishlistAPI.add(productId)
   )
   
   // Set default variant when product loads
   useEffect(() => {
     if (product && product.variants && product.variants.length > 0) {
       setSelectedVariant(product.variants[0])
+      setSelectedSize(product.variants[0].size)
+      setSelectedColor(product.variants[0].color)
     }
   }, [product])
+  
+  // Update selected variant when size or color changes
+  useEffect(() => {
+    if (product && product.variants && selectedSize && selectedColor) {
+      const variant = product.variants.find(v => v.size === selectedSize && v.color === selectedColor)
+      if (variant) {
+        setSelectedVariant(variant)
+      }
+    }
+  }, [selectedSize, selectedColor, product])
+  
+  // Get unique sizes and colors
+  const availableSizes = product?.variants ? [...new Set(product.variants.map(v => v.size))] : []
+  const availableColors = product?.variants ? [...new Set(product.variants.map(v => v.color))] : []
   
   // Update active image when variant changes
   useEffect(() => {
@@ -106,22 +108,33 @@ export default function ProductPage() {
   const currentImages = selectedVariant?.images || product.images || []
   const currentPrice = selectedVariant?.price || product.price || 0
   const isInStock = selectedVariant?.stock > 0 || product.stock > 0
+  console.log("Current images:", currentImages, "Current price:", currentPrice, "Is in stock:", isInStock)
   
-  const handleAddToCart = () => {
-    if (!selectedVariant) {
-      toast.error("Please select a variant")
-      return
+  const handleAddToCart = async () => {
+    try {
+      // Use selected variant information if available
+      const color = selectedColor || product.variants?.[0]?.color || 'Default'
+      const size = selectedSize || product.variants?.[0]?.size || 'Default'
+      
+      await addToCartMutation.mutate({
+        productId: product._id,
+        quantity,
+        color,
+        size
+      })
+      toast.success("Product added to cart!")
+    } catch (error) {
+      toast.error(error.message || "Failed to add to cart")
     }
-    
-    addToCartMutation.mutate({
-      productId: product._id,
-      variantId: selectedVariant._id,
-      quantity
-    })
   }
   
-  const handleAddToWishlist = () => {
-    addToWishlistMutation.mutate(product._id)
+  const handleAddToWishlist = async () => {
+    try {
+      await addToWishlistMutation.mutate(product._id)
+      toast.success("Product added to wishlist!")
+    } catch (error) {
+      toast.error(error.message || "Failed to add to wishlist")
+    }
   }
 
   const decreaseQuantity = () => {
@@ -139,60 +152,18 @@ export default function ProductPage() {
 
   return (
     (<div className="flex flex-col min-h-screen">
-      <header className="border-b">
-        <div className="container flex h-16 items-center justify-between px-4 md:px-6">
-          <Link href="/" className="flex items-center gap-2">
-            <Image src="/logo.png" alt="Qusamba Logo" width={120} height={40} />
-          </Link>
-          <nav className="hidden md:flex gap-6">
-            <Link
-              href="/"
-              className="text-sm font-medium hover:underline underline-offset-4">
-              Home
-            </Link>
-            <Link
-              href="/products"
-              className="text-sm font-medium hover:underline underline-offset-4">
-              Shop
-            </Link>
-            <Link
-              href="/about"
-              className="text-sm font-medium hover:underline underline-offset-4">
-              About
-            </Link>
-            <Link
-              href="/contact"
-              className="text-sm font-medium hover:underline underline-offset-4">
-              Contact
-            </Link>
-          </nav>
-          <div className="flex items-center gap-4">
-            <Link href="/wishlist">
-              <Button variant="ghost" size="icon" aria-label="Wishlist">
-                <Heart className="h-5 w-5" />
-                <span className="sr-only">Wishlist</span>
-              </Button>
-            </Link>
-            <Link href="/cart">
-              <Button variant="ghost" size="icon" aria-label="Cart">
-                <ShoppingBag className="h-5 w-5" />
-                <span className="sr-only">Cart</span>
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </header>
+      
       <main className="flex-1">
         <div className="container px-4 py-8 md:px-6 md:py-12">
           <div className="grid gap-8 md:grid-cols-2">
             <div className="space-y-4">
               <div className="overflow-hidden rounded-lg">
                 <Image
-                  src={currentImages[activeImage] || "/placeholder.svg"}
+                  src={currentImages[activeImage].url || "/placeholder.svg"}
                   alt={product.name}
-                  width={500}
-                  height={500}
-                  className="w-full object-cover" />
+                  width={450}
+                  height={450}
+                  className="object-cover  aspect-square transition-transform hover:scale-105" />
               </div>
               <div className="flex gap-2">
                 {currentImages.map((image, index) => (
@@ -203,7 +174,7 @@ export default function ProductPage() {
                     }`}
                     onClick={() => setActiveImage(index)}>
                     <Image
-                      src={image || "/placeholder.svg"}
+                      src={image.url || "/placeholder.svg"}
                       alt={`${product.name} ${index + 1}`}
                       width={80}
                       height={80} />
@@ -235,34 +206,81 @@ export default function ProductPage() {
               <p className="text-muted-foreground">{product.description}</p>
               <div className="space-y-4">
                 {product.variants && product.variants.length > 0 && (
-                  <div>
-                    <label htmlFor="variant" className="block text-sm font-medium mb-2">
-                      Variant
-                    </label>
-                    <Select 
-                      value={selectedVariant?._id || ""} 
-                      onValueChange={(value) => {
-                        const variant = product.variants.find(v => v._id === value)
-                        setSelectedVariant(variant)
-                      }}
-                    >
-                      <SelectTrigger id="variant" className="w-full">
-                        <SelectValue placeholder="Select variant" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {product.variants.map((variant) => (
-                          <SelectItem key={variant._id} value={variant._id}>
-                            {variant.name} - ${variant.price.toFixed(2)}
-                            {variant.stock <= 5 && variant.stock > 0 && (
-                              <span className="text-orange-500 ml-2">({variant.stock} left)</span>
-                            )}
-                            {variant.stock === 0 && (
-                              <span className="text-red-500 ml-2">(Out of stock)</span>
-                            )}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                  <div className="space-y-4">
+                    {/* Size Selection */}
+                    {availableSizes.length > 0 && (
+                      <div>
+                        <label htmlFor="size" className="block text-sm font-medium mb-2">
+                          Size
+                        </label>
+                        <Select 
+                          value={selectedSize || ""} 
+                          onValueChange={(value) => setSelectedSize(value)}
+                        >
+                          <SelectTrigger id="size" className="w-full">
+                            <SelectValue placeholder="Select size" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableSizes.map((size) => {
+                              const sizesWithThisSize = product.variants.filter(v => v.size === size)
+                              const isAvailable = sizesWithThisSize.some(v => v.stock > 0)
+                              return (
+                                <SelectItem key={size} value={size} disabled={!isAvailable}>
+                                  {size}
+                                  {!isAvailable && (
+                                    <span className="text-red-500 ml-2">(Out of stock)</span>
+                                  )}
+                                </SelectItem>
+                              )
+                            })}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    
+                    {/* Color Selection */}
+                    {availableColors.length > 0 && (
+                      <div>
+                        <label htmlFor="color" className="block text-sm font-medium mb-2">
+                          Color
+                        </label>
+                        <Select 
+                          value={selectedColor || ""} 
+                          onValueChange={(value) => setSelectedColor(value)}
+                        >
+                          <SelectTrigger id="color" className="w-full">
+                            <SelectValue placeholder="Select color" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableColors.map((color) => {
+                              const colorsWithThisColor = product.variants.filter(v => v.color === color)
+                              const isAvailable = colorsWithThisColor.some(v => v.stock > 0)
+                              return (
+                                <SelectItem key={color} value={color} disabled={!isAvailable}>
+                                  {color}
+                                  {!isAvailable && (
+                                    <span className="text-red-500 ml-2">(Out of stock)</span>
+                                  )}
+                                </SelectItem>
+                              )
+                            })}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    
+                    {/* Selected Variant Info */}
+                    {selectedVariant && (
+                      <div className="p-3 bg-gray-50 rounded-lg">
+                        <p className="text-sm font-medium">Selected: {selectedSize} - {selectedColor}</p>
+                        <p className="text-sm text-muted-foreground">
+                          Price: ${selectedVariant.price.toFixed(2)}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          Stock: {selectedVariant.stock > 0 ? `${selectedVariant.stock} available` : 'Out of stock'}
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
                 <div>
@@ -301,7 +319,7 @@ export default function ProductPage() {
                   className="flex-1" 
                   size="lg"
                   onClick={handleAddToCart}
-                  disabled={!isInStock || addToCartMutation.loading || !selectedVariant}
+                  disabled={!isInStock || addToCartMutation.loading}
                 >
                   {addToCartMutation.loading ? (
                     <>
@@ -441,18 +459,7 @@ export default function ProductPage() {
           </div>
         </div>
       </main>
-      <footer className="border-t py-6 md:py-10">
-        <div
-          className="container flex flex-col items-center justify-center gap-4 px-4 md:px-6 text-center">
-          <Image
-            src="/logo.png"
-            alt="Qusamba Logo"
-            width={100}
-            height={32}
-            className="mb-2" />
-          <p className="text-sm text-muted-foreground">© {new Date().getFullYear()} Qusamba. All rights reserved.</p>
-        </div>
-      </footer>
+      
     </div>)
   );
 }

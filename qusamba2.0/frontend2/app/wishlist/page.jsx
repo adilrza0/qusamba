@@ -1,49 +1,37 @@
 "use client"
 
-import { useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { Heart, ShoppingBag, Trash2 } from "lucide-react"
+import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter } from "@/components/ui/card"
-
-// Mock wishlist data
-const initialWishlistItems = [
-  {
-    id: 2,
-    name: "Silver Serenity",
-    description: "Sterling silver bangle with pearl accents",
-    price: 89.99,
-    image: "/placeholder.svg?height=300&width=300",
-    colors: ["Silver"],
-    sizes: ["Small", "Medium", "Large"],
-  },
-  {
-    id: 4,
-    name: "Crystal Charm",
-    description: "Elegant crystal-studded bangle for special occasions",
-    price: 159.99,
-    image: "/placeholder.svg?height=300&width=300",
-    colors: ["Silver", "Gold"],
-    sizes: ["Small", "Medium"],
-  },
-  {
-    id: 7,
-    name: "Floral Fantasy",
-    description: "Bangle with delicate floral engravings",
-    price: 99.99,
-    image: "/placeholder.svg?height=300&width=300",
-    colors: ["Silver", "Rose Gold"],
-    sizes: ["Small", "Medium"],
-  },
-]
+import { useWishlist } from "@/contexts/wishlist-context"
+import { useCart } from "@/contexts/cart-context"
 
 export default function WishlistPage() {
-  const [wishlistItems, setWishlistItems] = useState(initialWishlistItems)
+  const { state: wishlistState, dispatch: wishlistDispatch } = useWishlist()
+  const { dispatch: cartDispatch } = useCart()
 
   const removeFromWishlist = (id) => {
-    setWishlistItems(wishlistItems.filter((item) => item.id !== id))
+    wishlistDispatch({ type: "REMOVE_ITEM", payload: id })
+    toast.success("Item removed from wishlist")
+  }
+
+  const addToCart = (item) => {
+    cartDispatch({
+      type: "ADD_ITEM",
+      payload: {
+        id: item.id,
+        name: item.name,
+        price: item.price,
+        image: item.image,
+        color: item.colors?.[0] || "Default",
+        size: item.sizes?.[0] || "Default",
+      },
+    })
+    toast.success("Item added to cart")
   }
 
   return (
@@ -51,7 +39,7 @@ export default function WishlistPage() {
       <main className="flex-1">
         <div className="container px-4 py-8 md:px-6 md:py-12">
           <h1 className="text-3xl font-bold mb-6">Your Wishlist</h1>
-          {wishlistItems.length === 0 ? (
+          {wishlistState.items.length === 0 ? (
             <div className="text-center py-12">
               <Heart className="mx-auto h-12 w-12 text-muted-foreground" />
               <h2 className="mt-4 text-lg font-semibold">Your wishlist is empty</h2>
@@ -63,7 +51,7 @@ export default function WishlistPage() {
           ) : (
             <div
               className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-              {wishlistItems.map((item) => (
+              {wishlistState.items.map((item) => (
                 <Card key={item.id} className="overflow-hidden">
                   <div className="relative">
                     <Button
@@ -90,9 +78,9 @@ export default function WishlistPage() {
                     </Link>
                     <p className="text-sm text-muted-foreground mt-1">{item.description}</p>
                     <div className="mt-2 flex items-center justify-between">
-                      <p className="font-medium">${item.price.toFixed(2)}</p>
+                      <p className="font-medium">?{item.price.toFixed(2)}</p>
                       <div className="flex gap-1">
-                        {item.colors.map((color) => (
+                        {(item.colors || []).map((color) => (
                           <span key={color} className="text-xs text-muted-foreground">
                             {color}
                           </span>
@@ -101,7 +89,7 @@ export default function WishlistPage() {
                     </div>
                   </CardContent>
                   <CardFooter className="p-4 pt-0">
-                    <Button className="w-full">Add to Cart</Button>
+                    <Button className="w-full" onClick={() => addToCart(item)}>Add to Cart</Button>
                   </CardFooter>
                 </Card>
               ))}

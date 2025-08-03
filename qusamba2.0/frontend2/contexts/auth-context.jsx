@@ -67,7 +67,7 @@ function authReducer(state, action) {
 
 // Helper function to make API calls
 const apiCall = async (endpoint, options = {}) => {
-  const token = localStorage.getItem("qusamba-token")
+  const token = typeof window !== 'undefined' ? localStorage.getItem("qusamba-token") : null;
   
   const defaultOptions = {
     headers: {
@@ -106,6 +106,12 @@ export function AuthProvider({
   // Verify token and load user on mount
   useEffect(() => {
     const verifyToken = async () => {
+      // Only run on client side
+      if (typeof window === 'undefined') {
+        dispatch({ type: "LOAD_USER", payload: null });
+        return;
+      }
+      
       const token = localStorage.getItem("qusamba-token")
       
       if (!token) {
@@ -130,10 +136,12 @@ export function AuthProvider({
 
   // Save user to localStorage whenever it changes
   useEffect(() => {
-    if (state.user) {
-      localStorage.setItem("qusamba-user", JSON.stringify(state.user))
-    } else {
-      localStorage.removeItem("qusamba-user")
+    if (typeof window !== 'undefined') {
+      if (state.user) {
+        localStorage.setItem("qusamba-user", JSON.stringify(state.user))
+      } else {
+        localStorage.removeItem("qusamba-user")
+      }
     }
   }, [state.user])
 
@@ -184,8 +192,21 @@ export function AuthProvider({
   }
 
   const logout = () => {
-    localStorage.removeItem('qusamba-token')
+    // Clear all authentication and user data
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('qusamba-token')
+      localStorage.removeItem('qusamba-user')
+      localStorage.removeItem('qusamba-cart')
+      localStorage.removeItem('qusamba-wishlist')
+    }
+    
+    // Dispatch logout action first
     dispatch({ type: "LOGOUT" })
+    
+    // Redirect to login page
+    if (typeof window !== 'undefined') {
+      window.location.href = "/login"
+    }
   }
 
   return <AuthContext.Provider value={{ state, dispatch, login, signup, logout }}>{children}</AuthContext.Provider>;

@@ -1,8 +1,11 @@
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const Order = require('../models/Order');
 const Product = require('../models/Product');
+const AdminSettings = require('../models/AdminSettings');
 const { validationResult } = require('express-validator');
 const { body } = require('express-validator');
+const { sendPaymentConfirmationEmail } = require('../utils/email');
+const { autoCreateShipment } = require('./shippingController');
 
 // Create Payment Intent
 exports.createPaymentIntent = async (req, res) => {
@@ -93,6 +96,33 @@ exports.confirmPayment = async (req, res) => {
           );
         }
 
+        // Send payment confirmation email
+        try {
+          await sendPaymentConfirmationEmail(
+            order.user.email,
+            order.user.name,
+            order
+          );
+          console.log(`Payment confirmation email sent to ${order.user.email}`);
+        } catch (emailError) {
+          console.error('Payment confirmation email failed:', emailError);
+          // Don't fail the payment confirmation if email fails
+        }
+
+        // Check admin settings before auto-creating shipment
+        try {
+          const settings = await AdminSettings.getSettings();
+          if (settings.autoCreateShipment && !settings.requireOrderApproval) {
+            await autoCreateShipment(order._id);
+            console.log(`Auto-shipment created for order ${order._id} (automation enabled)`);
+          } else {
+            console.log(`Shipment creation skipped for order ${order._id} (requires admin approval)`);
+          }
+        } catch (shipmentError) {
+          console.error('Auto-shipment creation failed:', shipmentError);
+          // Don't fail the payment confirmation if shipment creation fails
+        }
+
         res.status(200).json({
           success: true,
           message: 'Payment confirmed successfully',
@@ -174,6 +204,31 @@ const handlePaymentSuccess = async (paymentIntent) => {
           item.product,
           { $inc: { stock: -item.quantity } }
         );
+      }
+
+      // Send payment confirmation email
+      try {
+        await sendPaymentConfirmationEmail(
+          order.user.email,
+          order.user.name,
+          order
+        );
+        console.log(`Payment confirmation email sent to ${order.user.email} via webhook`);
+      } catch (emailError) {
+        console.error('Payment confirmation email failed in webhook:', emailError);
+      }
+
+      // Check admin settings before auto-creating shipment
+      try {
+        const settings = await AdminSettings.getSettings();
+        if (settings.autoCreateShipment && !settings.requireOrderApproval) {
+          await autoCreateShipment(order._id);
+          console.log(`Auto-shipment created for order ${order._id} via webhook (automation enabled)`);
+        } else {
+          console.log(`Shipment creation skipped for order ${order._id} via webhook (requires admin approval)`);
+        }
+      } catch (shipmentError) {
+        console.error('Auto-shipment creation failed in webhook:', shipmentError);
       }
 
       console.log(`Payment succeeded for order ${order._id}`);

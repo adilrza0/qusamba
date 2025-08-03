@@ -166,7 +166,7 @@ exports.login = async (req, res) => {
 // @access  Private
 exports.getMe = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id)
+    const user = await User.findById(req.user._id)
       .populate('cart.product', 'name price images slug')
       .populate('wishlist', 'name price images slug');
     
@@ -201,7 +201,7 @@ exports.updateProfile = async (req, res) => {
     });
 
     const user = await User.findByIdAndUpdate(
-      req.user.id,
+      req.user._id,
       updates,
       { new: true, runValidators: true }
     );
@@ -229,7 +229,7 @@ exports.changePassword = async (req, res) => {
     const { currentPassword, newPassword } = req.body;
 
     // Get user with password
-    const user = await User.findById(req.user.id).select('+password');
+    const user = await User.findById(req.user._id).select('+password');
 
     // Check current password
     const isCurrentPasswordCorrect = await user.comparePassword(currentPassword);

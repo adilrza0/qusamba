@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react"
-import { Edit, MoreHorizontal, Plus, Search, Trash2, Upload, X, ImageIcon } from "lucide-react"
+import { Edit, MoreHorizontal, Plus, Search, Trash2, Upload, X, ImageIcon, RefreshCw } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -25,15 +25,9 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
-import { useAuth } from "@/contexts/auth-context"
-import { useForm } from "react-hook-form";
-import axios from "axios";
-
-// API base URL
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
-
-// Categories for the select dropdown
-const CATEGORIES = ['Premium', 'Luxury', 'Casual', 'Vintage'];
+import { Badge } from "@/components/ui/badge"
+import { useToast } from "@/components/ui/use-toast"
+import { productsAPI, categoriesAPI } from "@/services/api"
 
 export function AdminProducts() {
   const [searchTerm, setSearchTerm] = useState("")
@@ -42,44 +36,89 @@ export function AdminProducts() {
   const [isEditProductOpen, setIsEditProductOpen] = useState(false)
   const [editingProduct, setEditingProduct] = useState(null)
   const [products, setProducts] = useState([])
+  const [categories, setCategories] = useState([])
   const [loading, setLoading] = useState(true)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [selectedImages, setSelectedImages] = useState([])
   const [imagePreviews, setImagePreviews] = useState([])
+  const [currentPage, setCurrentPage] = useState(1)
   const [newProduct, setNewProduct] = useState({
     name: "",
     description: "",
     price: "",
     category: "",
     stock: "",
+    material: "",
+    sku: "",
+    variants: []
   })
+  const [currentVariant, setCurrentVariant] = useState({
+    color: "",
+    size: "",
+    stock: "",
+    price: "",
+    sku: "",
+    images: []
+  })
+  const [variantImages, setVariantImages] = useState([])
+  const [variantImagePreviews, setVariantImagePreviews] = useState([])
+  const [showVariantForm, setShowVariantForm] = useState(false)
   
-  const { user } = useAuth()
+  const { toast } = useToast()
 
-  // Fetch products from backend
+  // Fetch products and categories from backend
   useEffect(() => {
     fetchProducts()
+    fetchCategories()
   }, [])
 
   const fetchProducts = async () => {
     try {
+      const params = {
+        page: currentPage,
+        limit: 12,
+        search: searchTerm,
+        category: "undefined",
+        
+      }
       setLoading(true)
-      const response = await axios.get(`${API_BASE_URL}/products`)
-      setProducts(response.data.products || [])
+      console.log('Fetching products...')
+      // Call the API to get all products
+      const response = await productsAPI.getAll(params)
+      console.log('Products fetched:', response.products)
+      setProducts(response.products || [])
     } catch (error) {
       console.error('Error fetching products:', error)
       setProducts([])
+      toast({
+        title: "Error",
+        description: "Failed to fetch products. Please try again.",
+        variant: "destructive"
+      })
     } finally {
       setLoading(false)
     }
   }
 
+  const fetchCategories = async () => {
+    try {
+      const response = await categoriesAPI.getAll()
+      setCategories(response.data || [])
+    } catch (error) {
+      console.error('Error fetching categories:', error)
+      setCategories([])
+    }
+  }
+
   const filteredProducts = products.filter((product) => {
     const matchesSearch =
-      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.description.toLowerCase().includes(searchTerm.toLowerCase())
+      product.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      product.sku?.toLowerCase().includes(searchTerm.toLowerCase())
 
-    const matchesCategory = categoryFilter === "all" || product.category === categoryFilter
+    const matchesCategory = categoryFilter === "all" || 
+      product.category?._id === categoryFilter || 
+      product.category?.name === categoryFilter
 
     return matchesSearch && matchesCategory
   })
@@ -109,6 +148,65 @@ export function AdminProducts() {
     setImagePreviews(newPreviews)
   }
 
+  // Variant image handling
+  const handleVariantImageSelect = (e) => {
+    const files = Array.from(e.target.files)
+    setVariantImages(files)
+    
+    // Create preview URLs
+    const previews = files.map(file => URL.createObjectURL(file))
+    setVariantImagePreviews(previews)
+  }
+
+  const removeVariantImage = (index) => {
+    const newImages = variantImages.filter((_, i) => i !== index)
+    const newPreviews = variantImagePreviews.filter((_, i) => i !== index)
+    setVariantImages(newImages)
+    setVariantImagePreviews(newPreviews)
+  }
+
+  // Variant management
+  const handleVariantInputChange = (e) => {
+    const { name, value } = e.target
+    setCurrentVariant({ ...currentVariant, [name]: value })
+  }
+
+  const addVariant = () => {
+    if (!currentVariant.color || !currentVariant.size || !currentVariant.stock || !currentVariant.price) {
+      alert('Please fill in all variant fields')
+      return
+    }
+
+    const variantWithImages = {
+      ...currentVariant,
+      images: variantImages,
+      id: Date.now() // temporary ID for frontend management
+    }
+
+    setNewProduct({
+      ...newProduct,
+      variants: [...newProduct.variants, variantWithImages]
+    })
+
+    // Reset variant form
+    setCurrentVariant({
+      color: "",
+      size: "",
+      stock: "",
+      price: "",
+      sku: "",
+      images: []
+    })
+    setVariantImages([])
+    setVariantImagePreviews([])
+    setShowVariantForm(false)
+  }
+
+  const removeVariant = (index) => {
+    const newVariants = newProduct.variants.filter((_, i) => i !== index)
+    setNewProduct({ ...newProduct, variants: newVariants })
+  }
+
   const handleAddProduct = async () => {
     try {
       setUploadProgress(0)
@@ -119,44 +217,53 @@ export function AdminProducts() {
       formData.append('price', newProduct.price)
       formData.append('category', newProduct.category)
       formData.append('stock', newProduct.stock)
+      formData.append('material', newProduct.material)
+      formData.append('sku', newProduct.sku)
       
-      // Add images to form data
+      // Add main product images
       selectedImages.forEach((image, index) => {
         formData.append('images', image)
       })
-      const token = localStorage.getItem('qusamba-token');
-      const response = await axios.post(`${API_BASE_URL}/products`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-          'Authorization': `Bearer ${token}`
-        },
-        onUploadProgress: (progressEvent) => {
-          const percentCompleted = Math.round(
-            (progressEvent.loaded * 100) / progressEvent.total
-          )
-          setUploadProgress(percentCompleted)
-        }
-      })
+      
+      // Add variants data
+      if (newProduct.variants.length > 0) {
+        formData.append('variants', JSON.stringify(newProduct.variants.map(variant => ({
+          color: variant.color,
+          size: variant.size,
+          stock: variant.stock,
+          price: variant.price,
+          sku: variant.sku
+        }))))
+        
+        // Add variant images
+        newProduct.variants.forEach((variant, variantIndex) => {
+          variant.images.forEach((image, imageIndex) => {
+            formData.append(`variant_${variantIndex}_images`, image)
+          })
+        })
+      }
+      
+      const response = await productsAPI.create(formData)
       
       // Reset form and close dialog
       setIsAddProductOpen(false)
-      setNewProduct({
-        name: "",
-        description: "",
-        price: "",
-        category: "",
-        stock: "",
-      })
-      setSelectedImages([])
-      setImagePreviews([])
-      setUploadProgress(0)
+      resetForm()
       
       // Refresh products list
       fetchProducts()
       
+      toast({
+        title: "Success",
+        description: "Product added successfully."
+      })
+      
     } catch (error) {
       console.error('Error adding product:', error)
-      alert('Error adding product. Please try again.')
+      toast({
+        title: "Error",
+        description: "Failed to add product. Please try again.",
+        variant: "destructive"
+      })
     }
   }
 
@@ -168,6 +275,8 @@ export function AdminProducts() {
       price: product.price.toString(),
       category: product.category,
       stock: product.stock.toString(),
+      material: product.material || "",
+      sku: product.sku || "",
     })
     setIsEditProductOpen(true)
   }
@@ -182,65 +291,59 @@ export function AdminProducts() {
       formData.append('price', newProduct.price)
       formData.append('category', newProduct.category)
       formData.append('stock', newProduct.stock)
+      formData.append('material', newProduct.material)
+      formData.append('sku', newProduct.sku)
       
       // Add new images if any
       selectedImages.forEach((image, index) => {
         formData.append('images', image)
       })
       
-      const token = localStorage.getItem('qusamba-token');
-      const response = await axios.put(`${API_BASE_URL}/products/${editingProduct._id}`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-          'Authorization': `Bearer ${token}`
-        },
-        onUploadProgress: (progressEvent) => {
-          const percentCompleted = Math.round(
-            (progressEvent.loaded * 100) / progressEvent.total
-          )
-          setUploadProgress(percentCompleted)
-        }
-      })
+      const response = await productsAPI.update(editingProduct._id, formData)
       
       // Reset form and close dialog
       setIsEditProductOpen(false)
       setEditingProduct(null)
-      setNewProduct({
-        name: "",
-        description: "",
-        price: "",
-        category: "",
-        stock: "",
-      })
-      setSelectedImages([])
-      setImagePreviews([])
-      setUploadProgress(0)
+      resetForm()
       
       // Refresh products list
       fetchProducts()
       
+      toast({
+        title: "Success",
+        description: "Product updated successfully."
+      })
+      
     } catch (error) {
       console.error('Error updating product:', error)
-      alert('Error updating product. Please try again.')
+      toast({
+        title: "Error",
+        description: "Failed to update product. Please try again.",
+        variant: "destructive"
+      })
     }
   }
 
   const handleDeleteProduct = async (productId) => {
     if (window.confirm('Are you sure you want to delete this product?')) {
       try {
-        const token = localStorage.getItem('qusamba-token');
-        await axios.delete(`${API_BASE_URL}/products/${productId}`, {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        })
+        await productsAPI.delete(productId)
         
         // Refresh products list
         fetchProducts()
         
+        toast({
+          title: "Success",
+          description: "Product deleted successfully."
+        })
+        
       } catch (error) {
         console.error('Error deleting product:', error)
-        alert('Error deleting product. Please try again.')
+        toast({
+          title: "Error",
+          description: "Failed to delete product. Please try again.",
+          variant: "destructive"
+        })
       }
     }
   }
@@ -252,10 +355,37 @@ export function AdminProducts() {
       price: "",
       category: "",
       stock: "",
+      material: "",
+      sku: "",
+      variants: []
+    })
+    setCurrentVariant({
+      color: "",
+      size: "",
+      stock: "",
+      price: "",
+      sku: "",
+      images: []
     })
     setSelectedImages([])
     setImagePreviews([])
+    setVariantImages([])
+    setVariantImagePreviews([])
+    setShowVariantForm(false)
     setUploadProgress(0)
+  }
+
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(amount)
+  }
+
+  const getStockStatus = (stock) => {
+    if (stock <= 0) return { label: 'Out of Stock', color: 'bg-red-100 text-red-800' }
+    if (stock <= 5) return { label: 'Low Stock', color: 'bg-yellow-100 text-yellow-800' }
+    return { label: 'In Stock', color: 'bg-green-100 text-green-800' }
   }
 
   return (
@@ -278,8 +408,8 @@ export function AdminProducts() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Categories</SelectItem>
-              {CATEGORIES.map(category => (
-                <SelectItem key={category} value={category}>{category}</SelectItem>
+              {categories.map(category => (
+                <SelectItem key={category._id} value={category._id}>{category.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -341,8 +471,8 @@ export function AdminProducts() {
                       <SelectValue placeholder="Select category" />
                     </SelectTrigger>
                     <SelectContent>
-                      {CATEGORIES.map(category => (
-                        <SelectItem key={category} value={category}>{category}</SelectItem>
+                      {categories.map(category => (
+                        <SelectItem key={category._id} value={category._id}>{category.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -358,6 +488,120 @@ export function AdminProducts() {
                     value={newProduct.stock}
                     onChange={handleInputChange}
                     className="col-span-3" />
+                </div>
+                
+                {/* Variant Management Section */}
+                <div className="grid grid-cols-4 items-start gap-4">
+                  <Label className="text-right mt-2">Variants</Label>
+                  <div className="col-span-3 space-y-4">
+                    {/* Existing Variants Display */}
+                    {newProduct.variants && newProduct.variants.length > 0 && (
+                      <div className="space-y-2">
+                        <h4 className="font-semibold">Added Variants:</h4>
+                        {newProduct.variants.map((variant, index) => (
+                          <div key={index} className="border p-3 rounded bg-gray-50">
+                            <div className="flex justify-between items-center">
+                              <span className="font-medium">{variant.color} / {variant.size} - ?{variant.price}</span>
+                              <Button type="button" onClick={() => removeVariant(index)} variant="destructive" size="sm">
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+                            <div className="text-sm text-gray-600">Stock: {variant.stock} | SKU: {variant.sku}</div>
+                            <div className="text-sm text-gray-600">Images: {variant.images.length} uploaded</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {/* Add Variant Button */}
+                    <Button type="button" onClick={() => setShowVariantForm(true)} variant="outline" className="w-full">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add New Variant
+                    </Button>
+                    
+                    {/* Variant Form */}
+                    {showVariantForm && (
+                      <div className="border p-4 rounded bg-blue-50">
+                        <h4 className="font-semibold mb-4">New Variant Details</h4>
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <Label htmlFor="variant-color">Color</Label>
+                              <Input id="variant-color" name="color" value={currentVariant.color} onChange={handleVariantInputChange} placeholder="e.g., Red, Blue" />
+                            </div>
+                            <div>
+                              <Label htmlFor="variant-size">Size</Label>
+                              <Input id="variant-size" name="size" value={currentVariant.size} onChange={handleVariantInputChange} placeholder="e.g., S, M, L" />
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-3 gap-4">
+                            <div>
+                              <Label htmlFor="variant-stock">Stock</Label>
+                              <Input id="variant-stock" name="stock" type="number" value={currentVariant.stock} onChange={handleVariantInputChange} placeholder="0" />
+                            </div>
+                            <div>
+                              <Label htmlFor="variant-price">Price</Label>
+                              <Input id="variant-price" name="price" type="number" step="0.01" value={currentVariant.price} onChange={handleVariantInputChange} placeholder="0.00" />
+                            </div>
+                            <div>
+                              <Label htmlFor="variant-sku">SKU</Label>
+                              <Input id="variant-sku" name="sku" value={currentVariant.sku} onChange={handleVariantInputChange} placeholder="Unique SKU" />
+                            </div>
+                          </div>
+                          
+                          {/* Variant Image Upload */}
+                          <div>
+                            <Label htmlFor="variant-images">Images for this Color</Label>
+                            <div className="flex items-center gap-2 mt-2">
+                              <Input
+                                id="variant-images"
+                                type="file"
+                                multiple
+                                accept="image/*"
+                                onChange={handleVariantImageSelect}
+                                className="flex-1"
+                              />
+                              <Button type="button" variant="outline" size="sm">
+                                <Upload className="h-4 w-4 mr-2" />
+                                Browse
+                              </Button>
+                            </div>
+                            
+                            {/* Variant Image Previews */}
+                            {variantImagePreviews.length > 0 && (
+                              <div className="grid grid-cols-4 gap-2 mt-2">
+                                {variantImagePreviews.map((preview, index) => (
+                                  <div key={index} className="relative group">
+                                    <img
+                                      src={preview}
+                                      alt={`Preview ${index + 1}`}
+                                      className="w-full h-16 object-cover rounded border"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => removeVariantImage(index)}
+                                      className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600 transition-colors"
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          
+                          <div className="flex justify-end gap-2">
+                            <Button type="button" onClick={() => setShowVariantForm(false)} variant="outline">
+                              Cancel
+                            </Button>
+                            <Button type="button" onClick={addVariant}>
+                              Add Variant
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 
                 {/* Image Upload Section */}
@@ -490,8 +734,8 @@ export function AdminProducts() {
                       <SelectValue placeholder="Select category" />
                     </SelectTrigger>
                     <SelectContent>
-                      {CATEGORIES.map(category => (
-                        <SelectItem key={category} value={category}>{category}</SelectItem>
+                      {categories.map(category => (
+                        <SelectItem key={category._id} value={category.name}>{category.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -505,6 +749,28 @@ export function AdminProducts() {
                     name="stock"
                     type="number"
                     value={newProduct.stock}
+                    onChange={handleInputChange}
+                    className="col-span-3" />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="edit-material" className="text-right">
+                    Material
+                  </Label>
+                  <Input
+                    id="edit-material"
+                    name="material"
+                    value={newProduct.material}
+                    onChange={handleInputChange}
+                    className="col-span-3" />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="edit-sku" className="text-right">
+                    SKU
+                  </Label>
+                  <Input
+                    id="edit-sku"
+                    name="sku"
+                    value={newProduct.sku}
                     onChange={handleInputChange}
                     className="col-span-3" />
                 </div>
@@ -639,6 +905,7 @@ export function AdminProducts() {
               </TableRow>
             ) : (
               filteredProducts.map((product) => (
+                console.log(product._id),
                 <TableRow key={product._id}>
                   <TableCell>
                     {product.images && product.images.length > 0 ? (
@@ -657,8 +924,8 @@ export function AdminProducts() {
                   <TableCell className="hidden md:table-cell">
                     <p className="truncate max-w-[300px]">{product.description}</p>
                   </TableCell>
-                  <TableCell>${product.price.toFixed(2)}</TableCell>
-                  <TableCell className="hidden sm:table-cell">{product.category}</TableCell>
+                  <TableCell>?{product.price.toFixed(2)}</TableCell>
+                  <TableCell className="hidden sm:table-cell">{product.category.name}</TableCell>
                   <TableCell className="hidden sm:table-cell">{product.stock}</TableCell>
                   <TableCell>
                     <div

@@ -1,5 +1,6 @@
 "use client";
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
 import { ShoppingBag, CreditCard, Lock } from "lucide-react"
@@ -11,40 +12,118 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Checkbox } from "@/components/ui/checkbox"
+import AddressSelector from "@/components/ui/address-selector"
+import useRazorpay from "@/hooks/useRazorpay";
+import useAddresses from "@/hooks/useAddresses";
 import { useCart } from "@/contexts/cart-context"
 
 export default function CheckoutPage() {
+  const router = useRouter();
   const { state } = useCart()
+  const { addAddress } = useAddresses();
+  const [selectedAddress, setSelectedAddress] = useState(null);
+  const [showNewAddressForm, setShowNewAddressForm] = useState(false);
   const [formData, setFormData] = useState({
     email: "",
-    firstName: "",
-    lastName: "",
-    address: "",
-    city: "",
-    state: "",
-    zipCode: "",
-    country: "",
-    cardNumber: "",
-    expiryDate: "",
-    cvv: "",
-    nameOnCard: "",
   })
+  const [token, setToken] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const { processPayment, loading, error, clearError } = useRazorpay();
+
+  useEffect(() => {
+    // Only access localStorage on client side
+    if (typeof window !== 'undefined') {
+      setToken(localStorage.getItem("qusamba-token"));
+      setIsLoading(false);
+    }
+  }, []);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target
     setFormData({ ...formData, [name]: value })
   }
 
-  const handleSubmit = (e) => {
-    e.preventDefault()
-    // Handle Stripe payment processing here
-    console.log("Processing payment...", formData)
-    alert("Payment processing would happen here with Stripe integration!")
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    // Validate that an address is selected
+    if (!selectedAddress) {
+      alert("Please select a shipping address");
+      return;
+    }
+
+    const orderData = {
+      amount: total,
+      currency: "INR",
+      shippingAddress: selectedAddress,
+      items: state.items,
+      subtotal: state.total,
+      shippingCost: shipping,
+      tax: tax
+    };
+
+    const userDetails = {
+      name: selectedAddress.firstName + " " + selectedAddress.lastName,
+      email: formData.email,
+      contact: selectedAddress.phone
+    };
+
+    try {
+      const paymentResult = await processPayment(orderData, userDetails, token );
+      console.log("Payment successful!", paymentResult);
+      
+      // Clear cart after successful payment
+      // You might need to add this method to your cart context
+      // state.clearCart();
+      
+      // Redirect to success page with order details
+      const searchParams = new URLSearchParams({
+        orderId: paymentResult.order._id,
+        orderNumber: paymentResult.order.orderNumber,
+        paymentId: paymentResult.paymentId,
+        amount: paymentResult.order.totalAmount.toString(),
+        status: paymentResult.order.status
+      });
+      
+      router.push(`/order-success?${searchParams.toString()}`);
+      
+    } catch (err) {
+      console.error("Payment failed", err);
+      alert(`Payment failed: ${err.message}`);
+    }
   }
 
-  const shipping = state.total > 100 ? 0 : 10.0
+  const handleAddressSelect = (address) => {
+    setSelectedAddress(address);
+  };
+
+  const handleNewAddress = async (newAddress) => {
+    const result = await addAddress(newAddress);
+    if (result.success) {
+      setSelectedAddress(newAddress);
+      setShowNewAddressForm(false);
+    }
+  };
+  console.log(state.total)
+  const shipping = state.total < 100 ? 0 : 10.0
+  console.log(shipping)
   const tax = state.total * 0.08 // 8% tax
   const total = state.total + shipping + tax
+
+  // Show loading screen while initializing
+  if (isLoading) {
+    return (
+      <div className="flex flex-col min-h-screen">
+        <main className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+            <p className="text-muted-foreground">Loading checkout...</p>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   if (state.items.length === 0) {
     return (
@@ -72,20 +151,7 @@ export default function CheckoutPage() {
 
   return (
     (<div className="flex flex-col min-h-screen">
-      <header className="border-b">
-        <div className="container flex h-16 items-center justify-between px-4 md:px-6">
-          <Link href="/" className="flex items-center gap-2">
-            <Image src="/logo.png" alt="Qusamba Logo" width={120} height={40} />
-          </Link>
-          <div className="flex items-center gap-4">
-            <Link href="/cart">
-              <Button variant="ghost" size="sm">
-                ← Back to Cart
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </header>
+      
       <main className="flex-1">
         <div className="container px-4 py-8 md:px-6 md:py-12">
           <div className="grid gap-8 lg:grid-cols-2">
@@ -97,6 +163,43 @@ export default function CheckoutPage() {
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-6">
+                {/* Payment Method Information */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <CreditCard className="h-5 w-5" />
+                      Payment Method
+                    </CardTitle>
+                    <CardDescription>
+                      Your payment will be processed securely via Razorpay
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center gap-3 p-3 rounded-lg border bg-accent/5">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-full bg-primary/10">
+                          <CreditCard className="h-4 w-4 text-primary" />
+                        </div>
+                        <div>
+                          <p className="font-medium">Razorpay Payment Gateway</p>
+                          <p className="text-sm text-muted-foreground">
+                            Supports UPI, Cards, NetBanking, and Wallets
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                {/* Address Selection */}
+                <AddressSelector
+                  selectedAddress={selectedAddress}
+                  onAddressSelect={handleAddressSelect}
+                  onNewAddress={handleNewAddress}
+                  showNewAddressForm={showNewAddressForm}
+                  setShowNewAddressForm={setShowNewAddressForm}
+                  className="mb-6"
+                />
+
                 {/* Contact Information */}
                 <Card>
                   <CardHeader>
@@ -116,149 +219,6 @@ export default function CheckoutPage() {
                   </CardContent>
                 </Card>
 
-                {/* Shipping Address */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Shipping Address</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="firstName">First Name</Label>
-                        <Input
-                          id="firstName"
-                          name="firstName"
-                          value={formData.firstName}
-                          onChange={handleInputChange}
-                          required />
-                      </div>
-                      <div>
-                        <Label htmlFor="lastName">Last Name</Label>
-                        <Input
-                          id="lastName"
-                          name="lastName"
-                          value={formData.lastName}
-                          onChange={handleInputChange}
-                          required />
-                      </div>
-                    </div>
-                    <div>
-                      <Label htmlFor="address">Address</Label>
-                      <Input
-                        id="address"
-                        name="address"
-                        value={formData.address}
-                        onChange={handleInputChange}
-                        required />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="city">City</Label>
-                        <Input
-                          id="city"
-                          name="city"
-                          value={formData.city}
-                          onChange={handleInputChange}
-                          required />
-                      </div>
-                      <div>
-                        <Label htmlFor="zipCode">ZIP Code</Label>
-                        <Input
-                          id="zipCode"
-                          name="zipCode"
-                          value={formData.zipCode}
-                          onChange={handleInputChange}
-                          required />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="state">State</Label>
-                        <Select>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select state" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="ny">New York</SelectItem>
-                            <SelectItem value="ca">California</SelectItem>
-                            <SelectItem value="tx">Texas</SelectItem>
-                            <SelectItem value="fl">Florida</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <Label htmlFor="country">Country</Label>
-                        <Select>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select country" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="us">United States</SelectItem>
-                            <SelectItem value="ca">Canada</SelectItem>
-                            <SelectItem value="uk">United Kingdom</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Payment Information */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <CreditCard className="h-5 w-5" />
-                      Payment Information
-                    </CardTitle>
-                    <CardDescription>
-                      <Lock className="inline h-4 w-4 mr-1" />
-                      Your payment information is secure and encrypted
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div>
-                      <Label htmlFor="cardNumber">Card Number</Label>
-                      <Input
-                        id="cardNumber"
-                        name="cardNumber"
-                        placeholder="1234 5678 9012 3456"
-                        value={formData.cardNumber}
-                        onChange={handleInputChange}
-                        required />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="expiryDate">Expiry Date</Label>
-                        <Input
-                          id="expiryDate"
-                          name="expiryDate"
-                          placeholder="MM/YY"
-                          value={formData.expiryDate}
-                          onChange={handleInputChange}
-                          required />
-                      </div>
-                      <div>
-                        <Label htmlFor="cvv">CVV</Label>
-                        <Input
-                          id="cvv"
-                          name="cvv"
-                          placeholder="123"
-                          value={formData.cvv}
-                          onChange={handleInputChange}
-                          required />
-                      </div>
-                    </div>
-                    <div>
-                      <Label htmlFor="nameOnCard">Name on Card</Label>
-                      <Input
-                        id="nameOnCard"
-                        name="nameOnCard"
-                        value={formData.nameOnCard}
-                        onChange={handleInputChange}
-                        required />
-                    </div>
-                  </CardContent>
-                </Card>
 
                 <div className="flex items-center space-x-2">
                   <Checkbox id="terms" required />
@@ -274,8 +234,8 @@ export default function CheckoutPage() {
                   </Label>
                 </div>
 
-                <Button type="submit" className="w-full" size="lg">
-                  Complete Order - ${total.toFixed(2)}
+                <Button type="submit" className="w-full" size="lg" disabled={loading}>
+                  {loading ? 'Processing...' : `Complete Order - ₹${total.toFixed(2)}`}
                 </Button>
               </form>
             </div>
@@ -303,27 +263,27 @@ export default function CheckoutPage() {
                           {item.color}, {item.size} × {item.quantity}
                         </p>
                       </div>
-                      <p className="font-medium">${(item.price * item.quantity).toFixed(2)}</p>
+                      <p className="font-medium">₹{(item.price * item.quantity).toFixed(2)}</p>
                     </div>
                   ))}
                   <Separator />
                   <div className="space-y-2">
                     <div className="flex justify-between">
                       <span>Subtotal</span>
-                      <span>${state.total.toFixed(2)}</span>
+                      <span>₹{state.total.toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span>Shipping</span>
-                      <span>{shipping === 0 ? "Free" : `$${shipping.toFixed(2)}`}</span>
+                      <span>{shipping === 0 ? "Free" : `₹${shipping.toFixed(2)}`}</span>
                     </div>
                     <div className="flex justify-between">
                       <span>Tax</span>
-                      <span>${tax.toFixed(2)}</span>
+                      <span>₹{tax.toFixed(2)}</span>
                     </div>
                     <Separator />
                     <div className="flex justify-between font-semibold text-lg">
                       <span>Total</span>
-                      <span>${total.toFixed(2)}</span>
+                      <span>₹{total.toFixed(2)}</span>
                     </div>
                   </div>
                 </CardContent>

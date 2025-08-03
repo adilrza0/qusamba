@@ -48,5 +48,19 @@ const upload = multer({
 module.exports = {
   uploadSingle: upload.single('image'),
   uploadMultiple: upload.array('images', 10),
+  uploadAny: upload.any(), // Accept any field names for variant images
+  uploadFields: upload.fields([
+    { name: 'images', maxCount: 10 },
+    { name: 'variant_0_images', maxCount: 10 },
+    { name: 'variant_1_images', maxCount: 10 },
+    { name: 'variant_2_images', maxCount: 10 },
+    { name: 'variant_3_images', maxCount: 10 },
+    { name: 'variant_4_images', maxCount: 10 },
+    { name: 'variant_5_images', maxCount: 10 },
+    { name: 'variant_6_images', maxCount: 10 },
+    { name: 'variant_7_images', maxCount: 10 },
+    { name: 'variant_8_images', maxCount: 10 },
+    { name: 'variant_9_images', maxCount: 10 }
+  ]),
   cloudinary
 };

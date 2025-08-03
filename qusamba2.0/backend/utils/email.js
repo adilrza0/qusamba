@@ -2,9 +2,29 @@ const nodemailer = require('nodemailer');
 
 // Create transporter based on environment
 const createTransporter = () => {
+  // Check if email credentials are configured
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+    console.warn('Email credentials not configured. Emails will be logged but not sent.');
+    // Return a test transporter that doesn't actually send emails
+    return {
+      sendMail: async (mailOptions) => {
+        console.log('📧 Email would be sent:', {
+          to: mailOptions.to,
+          subject: mailOptions.subject,
+          html: mailOptions.html ? 'HTML content present' : 'No HTML content'
+        });
+        return {
+          messageId: 'test-message-id-' + Date.now(),
+          accepted: [mailOptions.to],
+          rejected: []
+        };
+      }
+    };
+  }
+
   if (process.env.NODE_ENV === 'production') {
     // Production email configuration (e.g., using Gmail, SendGrid, etc.)
-    return nodemailer.createTransporter({
+    return nodemailer.createTransport({
       service: 'gmail',
       auth: {
         user: process.env.EMAIL_USER,
@@ -13,12 +33,12 @@ const createTransporter = () => {
     });
   } else {
     // Development configuration using Ethereal Email (fake SMTP)
-    return nodemailer.createTransporter({
+    return nodemailer.createTransport({
       host: 'smtp.ethereal.email',
       port: 587,
       auth: {
-        user: process.env.EMAIL_USER || 'ethereal.user@ethereal.email',
-        pass: process.env.EMAIL_PASS || 'ethereal.pass'
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
       }
     });
   }
@@ -41,14 +61,32 @@ const sendEmail = async (options) => {
     
     console.log('Email sent successfully:', info.messageId);
     
-    // In development, log preview URL
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('Preview URL:', nodemailer.getTestMessageUrl(info));
+    // In development, log preview URL (only for real nodemailer transporters)
+    if (process.env.NODE_ENV !== 'production' && nodemailer.getTestMessageUrl) {
+      try {
+        const previewUrl = nodemailer.getTestMessageUrl(info);
+        if (previewUrl) {
+          console.log('Preview URL:', previewUrl);
+        }
+      } catch (urlError) {
+        // Ignore preview URL errors
+      }
     }
     
     return info;
   } catch (error) {
     console.error('Email sending failed:', error.message);
+    
+    // If email credentials are not configured, don't throw an error
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      console.warn('Email not sent due to missing credentials, but continuing...');
+      return {
+        messageId: 'no-credentials-' + Date.now(),
+        accepted: [options.email],
+        rejected: []
+      };
+    }
+    
     throw new Error('Email could not be sent');
   }
 };
@@ -169,8 +207,52 @@ const emailTemplates = {
     `
   }),
 
+  paymentConfirmation: (name, order) => ({
+    subject: `Payment Confirmed - Order #${order.orderNumber}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <div style="text-align: center; margin-bottom: 30px;">
+          <h1 style="color: #28a745; font-size: 28px; margin: 0;">Payment Confirmed!</h1>
+          <p style="color: #666; font-size: 16px;">Your payment has been successfully processed</p>
+        </div>
+        
+        <div style="background: #f9f9f9; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+          <h2 style="color: #333; margin-top: 0;">Hello ${name}!</h2>
+          <p style="color: #555; line-height: 1.6;">
+            Great news! Your payment has been confirmed and your order is now being processed.
+          </p>
+          <div style="background: white; padding: 15px; border-radius: 5px; margin: 15px 0;">
+            <p><strong>Order Number:</strong> #${order.orderNumber}</p>
+            <p><strong>Payment Date:</strong> ${new Date(order.payment?.paidAt || Date.now()).toLocaleDateString()}</p>
+            <p><strong>Total Amount:</strong> ₹${order.totalAmount}</p>
+            <p><strong>Payment Method:</strong> ${order.payment?.method === 'razorpay' ? 'Razorpay (Card/UPI/Net Banking)' : order.payment?.method}</p>
+            <p><strong>Status:</strong> <span style="color: #28a745; font-weight: bold;">${order.status === 'confirmed' ? 'Order Confirmed' : order.status}</span></p>
+          </div>
+        </div>
+        
+        <div style="background: #e8f5e8; border: 1px solid #28a745; padding: 15px; border-radius: 5px; margin: 20px 0;">
+          <p style="color: #155724; margin: 0; font-size: 14px;">
+            <strong>Next Steps:</strong> We'll start processing your order immediately. You'll receive another email with tracking details once your order ships.
+          </p>
+        </div>
+        
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/orders/${order._id}" 
+             style="background: #28a745; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: bold;">
+            View Order Status
+          </a>
+        </div>
+        
+        <div style="border-top: 1px solid #eee; padding-top: 20px; margin-top: 30px; color: #666; font-size: 14px;">
+          <p>Thank you for choosing Qusamba! If you have any questions, contact us at support@qusamba.com</p>
+          <p>Best regards,<br>The Qusamba Team</p>
+        </div>
+      </div>
+    `
+  }),
+
   orderShipped: (name, order, trackingNumber) => ({
-    subject: `Your Order Has Shipped - #${order.orderNumber}`,
+    subject: `Order Shipped - #${order.orderNumber}`,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <div style="text-align: center; margin-bottom: 30px;">
@@ -234,6 +316,15 @@ const sendOrderConfirmationEmail = async (email, name, order) => {
   });
 };
 
+const sendPaymentConfirmationEmail = async (email, name, order) => {
+  const template = emailTemplates.paymentConfirmation(name, order);
+  return await sendEmail({
+    email,
+    subject: template.subject,
+    html: template.html
+  });
+};
+
 const sendOrderShippedEmail = async (email, name, order, trackingNumber) => {
   const template = emailTemplates.orderShipped(name, order, trackingNumber);
   return await sendEmail({
@@ -248,6 +339,7 @@ module.exports = {
   sendWelcomeEmail,
   sendPasswordResetEmail,
   sendOrderConfirmationEmail,
+  sendPaymentConfirmationEmail,
   sendOrderShippedEmail,
   emailTemplates
 };

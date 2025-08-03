@@ -23,7 +23,12 @@ const variantSchema = new mongoose.Schema({
     required: true,
     unique: true
   },
-  images: [String]
+  images: [{
+    url: String,
+    public_id: String,
+    alt: String,
+    forColor: String
+  }]
 });
 
 const reviewSchema = new mongoose.Schema({

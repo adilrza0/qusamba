@@ -12,13 +12,15 @@ import { useCart } from "@/contexts/cart-context"
 import { UserMenu } from "@/components/user-menu"
 import { Carousel } from "@/components/crousel"
 import CategorySection from "@/components/category-section"
+import Hero from "@/components/Hero"
 
 export default function Home() {
  
   return (
-    (<div className="flex flex-col min-h-screen">
+    (<div className="flex flex-col  bg-background min-h-screen">
       
-      <main className="flex-1">
+      <main className="flex-1 relative">
+        <Hero />
         <Carousel/>
         <HeroSection />
         <CategorySection/>

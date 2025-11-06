@@ -3,12 +3,11 @@ const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const cors = require('cors');
 const axios = require('axios');
-const fetch = require('node-fetch');
 
 const shippingRoutes = require('./routes/shippingRoutes');
 
 dotenv.config();
-const SELF_URL = "https://qusamba.onrender.com";
+
 const authRoutes = require('./routes/authRoutes');
 const productRoutes = require('./routes/productRoutes');
 const orderRoutes = require('./routes/orderRoutes');
@@ -45,18 +44,6 @@ const corsOptions = {
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 };
-function keepAlive() {
-  setInterval(async () => {
-    try {
-      const res = await fetch(SELF_URL);
-      console.log(`Self-ping OK: ${res.status}`);
-    } catch (err) {
-      console.log("Self-ping failed:", err.message);
-    }
-  }, 10 * 60 * 1000); // every 10 minutes
-}
-
-keepAlive();
 
 app.use(cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));

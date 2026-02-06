@@ -3,10 +3,18 @@ const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const cors = require('cors');
 const axios = require('axios');
+const helmet = require('helmet');
+const compression = require('compression');
+const rateLimit = require('express-rate-limit');
+const session = require('express-session');
+const passport = require('passport');
 
 const shippingRoutes = require('./routes/shippingRoutes');
 
 dotenv.config();
+
+// Initialize Passport configuration
+require('./config/passport');
 
 const authRoutes = require('./routes/authRoutes');
 const productRoutes = require('./routes/productRoutes');
@@ -24,18 +32,18 @@ const app = express();
 // CORS configuration for production
 const corsOptions = {
   origin: function (origin, callback) {
-    
+
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
-    
+
     // Check if origin is from Vercel deployment or localhost
-    if (origin.includes('vercel.app') || 
-        origin.includes('localhost') || 
-        origin === process.env.FRONTEND_URL) {
-          
+    if (origin.includes('vercel.app') ||
+      origin.includes('localhost') ||
+      origin === process.env.FRONTEND_URL) {
+
       return callback(null, true);
     }
-    
+
     // Reject other origins
     return callback(new Error('Not allowed by CORS'), false);
   },
@@ -46,14 +54,45 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+app.use(helmet());
+app.use(compression());
+
+// Rate limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 1000, // Limit each IP to 1000 requests per windowMs
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  message: 'Too many requests from this IP, please try again after 15 minutes'
+});
+
+// Apply rate limiting to all requests
+app.use('/api', limiter);
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Session middleware for OAuth (only used during OAuth flow)
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'qusamba_session_secret',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
+    maxAge: 10 * 60 * 1000 // 10 minutes - only needed for OAuth flow
+  }
+}));
+
+// Initialize Passport
+app.use(passport.initialize());
+app.use(passport.session());
+
+
 // Health check endpoint
-app.get('/api/', (req, res) => 
+app.get('/api/', (req, res) =>
   res.json({ message: 'API is working fine', timestamp: new Date().toISOString() }))
 
-app.get('/api/health', (req, res) => 
+app.get('/api/health', (req, res) =>
   res.json({ status: 'OK', timestamp: new Date().toISOString() }))
 
 app.use('/api/auth', authRoutes);
@@ -80,7 +119,7 @@ axios.get('https://api.ipify.org?format=json')
 mongoose.connect(process.env.MONGO_URI)
   .then(() => {
     app.listen(process.env.PORT || 5000, () => {
-      
+
       console.log(`Server running at ${process.env.PORT || 5000} and DB connected`);
     });
   })

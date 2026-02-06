@@ -1,33 +1,58 @@
 const Product = require('../models/Product');
 const { validationResult } = require('express-validator');
+const mongoose = require('mongoose');
 
 exports.getAll = async (req, res) => {
   console.log('Get all products endpoint hit');
   try {
     const { page = 1, limit = 10, category, priceMin, priceMax, sort = '-createdAt' } = req.query;
     const skip = (page - 1) * limit;
-    
+
     // Build query filters
     const query = {};
-   
-    if (category!=="undefined") query.category = category;
-   
+
+    if (category && category !== "undefined" && category !== "all") query.category = category;
+    if (req.query.productType && req.query.productType !== "all") query.productType = req.query.productType;
+    if (req.query.isFeatured) query.isFeatured = req.query.isFeatured === 'true';
+
+    // Variant Filters (Size & Color)
+    const { size, color } = req.query;
+    if (size && size !== 'all') {
+      query['variants.size'] = size;
+    }
+    if (color && color !== 'all') {
+      query['variants.color'] = color;
+    }
+
+
     if (priceMin || priceMax) {
       query.price = {};
       if (priceMin) query.price.$gte = Number(priceMin);
       if (priceMax) query.price.$lte = Number(priceMax);
     }
+
+    // Search functionality
+    const search = req.query.search || req.query.q;
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } },
+        { vendor: { $regex: search, $options: 'i' } },
+        { 'variants.sku': { $regex: search, $options: 'i' } }
+      ];
+    }
     console.log(query)
     const products = await Product.find(query)
-      .populate('category', 'name slug')
+      .populate('category', 'name slug image')
+      .populate('reviews.user', 'firstName lastName avatar')
       .sort(sort)
       .skip(skip)
       .limit(Number(limit));
 
-     
+
     console.log(`Fetched ${products.length} products for page ${page} with limit ${limit}`);
     const total = await Product.countDocuments(query);
-    
+
     res.json({
       products,
       pagination: {
@@ -47,67 +72,85 @@ exports.create = async (req, res) => {
   console.log('Create product endpoint hit');
   console.log('Request body:', req.body);
   console.log('Request files:', req.files);
-  
+
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       console.log('Validation errors:', errors.array());
       return res.status(400).json({ errors: errors.array() });
     }
-    
+
     const productData = { ...req.body };
-    
+
     // Handle category conversion from name to ObjectId
     if (productData.category && typeof productData.category === 'string') {
-      const Category = require('../models/Category');
-      let category = await Category.findOne({ name: productData.category });
-      
-      if (!category) {
-        // Create category if it doesn't exist
-        category = await Category.create({
-          name: productData.category,
-          slug: productData.category.toLowerCase().replace(/[^a-z0-9]+/g, '-')
-        });
-        console.log('Created new category:', category);
+      // Check if it's already a valid ObjectId (sent by frontend)
+      if (!mongoose.Types.ObjectId.isValid(productData.category)) {
+        const Category = require('../models/Category');
+        let category = await Category.findOne({ name: productData.category });
+
+        if (!category) {
+          // Create category if it doesn't exist
+          category = await Category.create({
+            name: productData.category,
+            slug: productData.category.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+          });
+          console.log('Created new category:', category);
+        }
+
+        productData.category = category._id;
       }
-      
-      productData.category = category._id;
+      // If it IS a valid ObjectId, we leave it as is.
     }
-    
+
     // Generate SKU if not provided
     if (!productData.sku) {
       const timestamp = Date.now().toString().slice(-6);
       const namePrefix = productData.name ? productData.name.substring(0, 3).toUpperCase() : 'PRD';
       productData.sku = `${namePrefix}-${timestamp}`;
     }
-    
+
     // Set default material if not provided
     if (!productData.material) {
       productData.material = 'Other';
     }
-    
+
     // Generate slug from name
     if (productData.name) {
       productData.slug = productData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
     }
-    
+
     // Parse variants data if provided
     if (productData.variants && typeof productData.variants === 'string') {
       try {
         productData.variants = JSON.parse(productData.variants);
         console.log('Parsed variants:', productData.variants);
+
+        // Auto-generate SKU for variants if missing
+        if (Array.isArray(productData.variants)) {
+          productData.variants = productData.variants.map(variant => {
+            if (!variant.sku || variant.sku.trim() === '') {
+              // Sanitize color and size for SKU
+              const colorCode = variant.color ? variant.color.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().substring(0, 3) : 'COL';
+              const sizeCode = variant.size ? variant.size.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().substring(0, 3) : 'SIZ';
+              const randomSuffix = Date.now().toString().slice(-4);
+              variant.sku = `${productData.sku}-${colorCode}-${sizeCode}-${randomSuffix}`;
+            }
+            return variant;
+          });
+        }
       } catch (error) {
         console.error('Error parsing variants:', error);
         productData.variants = [];
       }
     }
-    
+
     // Handle image uploads
     if (req.files && req.files.length > 0) {
       console.log('Processing uploaded files:', req.files.length);
       const mainImages = [];
       const variantImagesMap = {};
-      
+
       req.files.forEach(file => {
         const variantMatch = file.fieldname.match(/^variant_(\d+)_images$/);
         if (variantMatch) {
@@ -128,7 +171,7 @@ exports.create = async (req, res) => {
           });
         }
       });
-      
+
       // Set main images or default placeholder if no main images
       if (mainImages.length > 0) {
         productData.images = mainImages;
@@ -142,14 +185,14 @@ exports.create = async (req, res) => {
       } else {
         productData.images = [];
       }
-      
+
       if (productData.variants) {
         productData.variants = productData.variants.map((variant, idx) => ({
           ...variant,
           images: variantImagesMap[idx] || []
         }));
       }
-      
+
       console.log('Processed images:', productData.images);
       console.log('Processed variants:', productData.variants);
     } else {
@@ -161,11 +204,14 @@ exports.create = async (req, res) => {
         alt: 'Placeholder image'
       }];
     }
-    
+
     console.log('Creating product with data:', productData);
     const product = await Product.create(productData);
-    await product.populate('category', 'name slug');
-    
+    await product.populate([
+      { path: 'category', select: 'name slug image' },
+      { path: 'reviews.user', select: 'firstName lastName avatar' }
+    ]);
+
     console.log('Product created successfully:', product._id);
     res.status(201).json(product);
   } catch (error) {
@@ -177,13 +223,13 @@ exports.create = async (req, res) => {
 exports.getOne = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id)
-      .populate('category', 'name slug')
-      .populate('reviews.user', 'username');
-      
+      .populate('category', 'name slug image')
+      .populate('reviews.user', 'firstName lastName avatar');
+
     if (!product) {
       return res.status(404).json({ message: 'Product not found' });
     }
-    
+
     res.json(product);
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -194,53 +240,73 @@ exports.update = async (req, res) => {
   console.log('Update product endpoint hit');
   console.log('Request body:', req.body);
   console.log('Request files:', req.files);
-  
+
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
     }
-    
+
     const updateData = { ...req.body };
-    
+
     // Handle category conversion from name to ObjectId
     if (updateData.category && typeof updateData.category === 'string') {
-      const Category = require('../models/Category');
-      let category = await Category.findOne({ name: updateData.category });
-      
-      if (!category) {
-        // Create category if it doesn't exist
-        category = await Category.create({
-          name: updateData.category,
-          slug: updateData.category.toLowerCase().replace(/[^a-z0-9]+/g, '-')
-        });
-        console.log('Created new category:', category);
+      // Check if it's already a valid ObjectId
+      if (!mongoose.Types.ObjectId.isValid(updateData.category)) {
+        const Category = require('../models/Category');
+        let category = await Category.findOne({ name: updateData.category });
+
+        if (!category) {
+          // Create category if it doesn't exist
+          category = await Category.create({
+            name: updateData.category,
+            slug: updateData.category.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+          });
+          console.log('Created new category:', category);
+        }
+
+        updateData.category = category._id;
       }
-      
-      updateData.category = category._id;
     }
-    
+
     // Update slug if name changed
     if (updateData.name) {
       updateData.slug = updateData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
     }
-    
+
     // Parse variants data if provided
     if (updateData.variants && typeof updateData.variants === 'string') {
       try {
         updateData.variants = JSON.parse(updateData.variants);
         console.log('Parsed variants for update:', updateData.variants);
+
+        // Auto-generate SKU for variants if missing
+        if (Array.isArray(updateData.variants)) {
+          // We need a base SKU. If updating, use existing or provided.
+          // Ideally we fetch existing if not provided, but for now use 'VAR' prefix if unknown
+          const baseSku = updateData.sku || 'VAR';
+
+          updateData.variants = updateData.variants.map(variant => {
+            if (!variant.sku || variant.sku.trim() === '') {
+              const colorCode = variant.color ? variant.color.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().substring(0, 3) : 'COL';
+              const sizeCode = variant.size ? variant.size.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().substring(0, 3) : 'SIZ';
+              const randomSuffix = Date.now().toString().slice(-4);
+              variant.sku = `${baseSku}-${colorCode}-${sizeCode}-${randomSuffix}`;
+            }
+            return variant;
+          });
+        }
       } catch (error) {
         console.error('Error parsing variants for update:', error);
         updateData.variants = [];
       }
     }
-    
+
     // Handle new image uploads
     if (req.files && req.files.length > 0) {
       const mainImages = [];
       const variantImagesMap = {};
-      
+
       req.files.forEach(file => {
         const variantMatch = file.fieldname.match(/^variant_(\d+)_images$/);
         if (variantMatch) {
@@ -261,7 +327,7 @@ exports.update = async (req, res) => {
           });
         }
       });
-      
+
       // Handle main product images
       if (mainImages.length > 0) {
         if (req.body.keepExisting === 'true') {
@@ -271,7 +337,7 @@ exports.update = async (req, res) => {
           updateData.images = mainImages;
         }
       }
-      
+
       // Handle variant images
       if (updateData.variants && Object.keys(variantImagesMap).length > 0) {
         updateData.variants = updateData.variants.map((variant, idx) => ({
@@ -280,17 +346,20 @@ exports.update = async (req, res) => {
         }));
       }
     }
-    
+
     const product = await Product.findByIdAndUpdate(
       req.params.id,
       updateData,
       { new: true, runValidators: true }
-    ).populate('category', 'name slug');
-    
+    ).populate([
+      { path: 'category', select: 'name slug image' },
+      { path: 'reviews.user', select: 'firstName lastName avatar' }
+    ]);
+
     if (!product) {
       return res.status(404).json({ message: 'Product not found' });
     }
-    
+
     res.json(product);
   } catch (error) {
     console.error('Error updating product:', error);
@@ -304,7 +373,7 @@ exports.remove = async (req, res) => {
     if (!product) {
       return res.status(404).json({ message: 'Product not found' });
     }
-    
+
     res.json({ message: 'Product deleted successfully' });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
@@ -315,11 +384,11 @@ exports.search = async (req, res) => {
   try {
     const { q, page = 1, limit = 10 } = req.query;
     const skip = (page - 1) * limit;
-    
+
     if (!q) {
       return res.status(400).json({ message: 'Search query is required' });
     }
-    
+
     const products = await Product.find({
       $or: [
         { name: { $regex: q, $options: 'i' } },
@@ -327,10 +396,11 @@ exports.search = async (req, res) => {
         { tags: { $in: [new RegExp(q, 'i')] } }
       ]
     })
-      .populate('category', 'name slug')
+      .populate('category', 'name slug image')
+      .populate('reviews.user', 'firstName lastName avatar')
       .skip(skip)
       .limit(Number(limit));
-      
+
     const total = await Product.countDocuments({
       $or: [
         { name: { $regex: q, $options: 'i' } },
@@ -338,7 +408,7 @@ exports.search = async (req, res) => {
         { tags: { $in: [new RegExp(q, 'i')] } }
       ]
     });
-    
+
     res.json({
       products,
       pagination: {
@@ -357,35 +427,56 @@ exports.addReview = async (req, res) => {
   try {
     const { rating, comment } = req.body;
     const product = await Product.findById(req.params.id);
-    
+
     if (!product) {
       return res.status(404).json({ message: 'Product not found' });
     }
-    
+
     // Check if user already reviewed this product
     const existingReview = product.reviews.find(
       review => review.user.toString() === req.user.id
     );
-    
+
     if (existingReview) {
       return res.status(400).json({ message: 'You have already reviewed this product' });
     }
-    
+
     const review = {
       user: req.user.id,
       rating: Number(rating),
       comment
     };
-    
+
     product.reviews.push(review);
-    
+
     // Update average rating
     const totalRating = product.reviews.reduce((sum, review) => sum + review.rating, 0);
     product.avgRating = totalRating / product.reviews.length;
-    
+
     await product.save();
-    
+
     res.status(201).json({ message: 'Review added successfully' });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+exports.getTypes = async (req, res) => {
+  try {
+    const types = await Product.distinct('productType', { status: 'active' });
+    const filteredTypes = types.filter(Boolean);
+
+    const typesWithImages = await Promise.all(filteredTypes.map(async (type) => {
+      const product = await Product.findOne({ productType: type, status: 'active' })
+        .select('images')
+        .lean();
+      return {
+        name: type,
+        image: product?.images?.[0]?.url || '/traditional.webp'
+      };
+    }));
+
+    res.json(typesWithImages);
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }

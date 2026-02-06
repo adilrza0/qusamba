@@ -76,7 +76,7 @@ const paymentSchema = new mongoose.Schema({
 const trackingSchema = new mongoose.Schema({
   status: {
     type: String,
-    enum: ['placed', 'confirmed', 'processing', 'ready_to_ship', 'shipped', 'out_for_delivery', 'delivered', 'cancelled', 'returned'],
+    enum: ['pending_payment', 'placed', 'confirmed', 'processing', 'ready_to_ship', 'shipped', 'out_for_delivery', 'delivered', 'cancelled', 'returned'],
     required: true
   },
   message: String,
@@ -98,7 +98,7 @@ const orderSchema = new mongoose.Schema({
     unique: true
     // Note: Generated automatically by pre-save hook
   },
-  
+
   // Customer information
   user: {
     type: mongoose.Schema.Types.ObjectId,
@@ -106,10 +106,10 @@ const orderSchema = new mongoose.Schema({
     required: true
   },
   guestEmail: String, // For guest checkout
-  
+
   // Order items
   items: [orderItemSchema],
-  
+
   // Pricing breakdown
   subtotal: {
     type: Number,
@@ -139,24 +139,23 @@ const orderSchema = new mongoose.Schema({
     type: String,
     default: 'INR'
   },
-  
+
   // Order status
   status: {
     type: String,
-    enum: ['placed', 'confirmed', 'processing', 'ready_to_ship', 'shipped', 'out_for_delivery', 'delivered', 'cancelled', 'returned'],
-    default: 'placed'
+    enum: ['pending_payment', 'placed', 'confirmed', 'processing', 'ready_to_ship', 'shipped', 'out_for_delivery', 'delivered', 'cancelled', 'returned'],
+    default: 'pending_payment'
   },
-  
   // Addresses
   shippingAddress: {
     type: shippingAddressSchema,
     required: true
   },
   billingAddress: shippingAddressSchema,
-  
+
   // Payment information
   payment: paymentSchema,
-  
+
   // Shipping information
   shipping: {
     method: String,
@@ -182,14 +181,14 @@ const orderSchema = new mongoose.Schema({
       height: { type: Number, default: 10 }
     }
   },
-  
+
   // Tracking history
   tracking: [trackingSchema],
-  
+
   // Special instructions
   notes: String,
   adminNotes: String,
-  
+
   // Dates
   placedAt: {
     type: Date,
@@ -199,7 +198,7 @@ const orderSchema = new mongoose.Schema({
   shippedAt: Date,
   deliveredAt: Date,
   cancelledAt: Date,
-  
+
   // Cancellation/Return
   cancellationReason: String,
   returnReason: String,
@@ -208,7 +207,7 @@ const orderSchema = new mongoose.Schema({
     default: false
   },
   giftMessage: String,
-  
+
   // Admin fields
   lastUpdatedBy: {
     type: mongoose.Schema.Types.ObjectId,
@@ -217,7 +216,7 @@ const orderSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // Generate order number before saving
-orderSchema.pre('save', async function(next) {
+orderSchema.pre('save', async function (next) {
   if (this.isNew && !this.orderNumber) {
     const count = await this.constructor.countDocuments();
     this.orderNumber = `QUS${Date.now().toString().slice(-6)}${(count + 1).toString().padStart(4, '0')}`;
@@ -226,16 +225,16 @@ orderSchema.pre('save', async function(next) {
 });
 
 // Add tracking entry when status changes
-orderSchema.pre('save', function(next) {
+orderSchema.pre('save', function (next) {
   if (this.isModified('status') && !this.isNew) {
     this.tracking.push({
       status: this.status,
       message: `Order status changed to ${this.status}`,
       timestamp: new Date()
     });
-    
+
     // Update relevant date fields
-    switch(this.status) {
+    switch (this.status) {
       case 'confirmed':
         this.confirmedAt = new Date();
         break;
@@ -256,7 +255,7 @@ orderSchema.pre('save', function(next) {
 });
 
 // Instance methods
-orderSchema.methods.addTrackingUpdate = function(status, message, location, updatedBy) {
+orderSchema.methods.addTrackingUpdate = function (status, message, location, updatedBy) {
   this.tracking.push({
     status,
     message,
@@ -267,19 +266,20 @@ orderSchema.methods.addTrackingUpdate = function(status, message, location, upda
   return this.save();
 };
 
-orderSchema.methods.canBeCancelled = function() {
+orderSchema.methods.canBeCancelled = function () {
   return ['placed', 'confirmed', 'processing', 'ready_to_ship'].includes(this.status);
 };
 
-orderSchema.methods.canBeReturned = function() {
-  return this.status === 'delivered' && 
-         this.deliveredAt && 
-         (Date.now() - this.deliveredAt.getTime()) <= (7 * 24 * 60 * 60 * 1000); // 7 days
+orderSchema.methods.canBeReturned = function () {
+  return this.status === 'delivered' &&
+    this.deliveredAt &&
+    (Date.now() - this.deliveredAt.getTime()) <= (7 * 24 * 60 * 60 * 1000); // 7 days
 };
 
 // Virtual for display status
-orderSchema.virtual('displayStatus').get(function() {
+orderSchema.virtual('displayStatus').get(function () {
   const statusMap = {
+    'pending_payment': 'Pending Payment',
     'placed': 'Order Placed',
     'confirmed': 'Order Confirmed',
     'processing': 'Processing',
@@ -294,7 +294,7 @@ orderSchema.virtual('displayStatus').get(function() {
 });
 
 // Virtual for order age
-orderSchema.virtual('orderAge').get(function() {
+orderSchema.virtual('orderAge').get(function () {
   return Math.floor((Date.now() - this.placedAt.getTime()) / (1000 * 60 * 60 * 24));
 });
 

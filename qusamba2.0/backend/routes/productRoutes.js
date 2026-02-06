@@ -6,7 +6,8 @@ const {
   update,
   remove: deleteProduct,
   search,
-  addReview
+  addReview,
+  getTypes: getProductTypes
 } = require('../controllers/productController');
 const { uploadAny: uploadImages } = require('../middleware/uploadMiddleware');
 const { protect, adminOnly } = require('../middleware/authMiddleware');
@@ -28,7 +29,7 @@ const validateProduct = [
   body('stock').isInt({ min: 0 }).withMessage('Stock must be a non-negative integer'),
   (req, res, next) => {
     console.log('validateProduct: Running validation checks');
-    
+
     // Validate variants if provided
     if (req.body.variants) {
       console.log('validateProduct: Variants found, validating...');
@@ -37,16 +38,16 @@ const validateProduct = [
         if (Array.isArray(variants)) {
           for (const variant of variants) {
             if (!variant.color || !variant.size || !variant.price || !variant.stock || !variant.sku) {
-              return res.status(400).json({ 
-                errors: [{ msg: 'Each variant must have color, size, price, stock, and sku' }] 
+              return res.status(400).json({
+                errors: [{ msg: 'Each variant must have color, size, price, stock, and sku' }]
               });
             }
           }
         }
       } catch (error) {
-        
-        return res.status(400).json({ 
-          errors: [{ msg: 'Invalid variants data format' }] 
+
+        return res.status(400).json({
+          errors: [{ msg: 'Invalid variants data format' }]
         });
       }
     }
@@ -76,6 +77,7 @@ const validateReview = [
 // Product routes
 router.get('/', getAll);
 router.get('/search', search);
+router.get('/types', getProductTypes);
 router.post('/', protect, adminOnly, uploadImages, validateProduct, create);
 router.get('/:id', getById);
 router.put('/:id', protect, adminOnly, uploadImages, validateProduct, update);

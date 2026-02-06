@@ -19,23 +19,23 @@ export default function CartPage() {
   console.log(state, "cart state")
   const { toast } = useToast()
 
-  const updateQuantity = async(item, newQuantity) => {
+  const updateQuantity = async (item, newQuantity) => {
     try {
       await cartAPI.update(item.id, newQuantity, item.color, item.size)
       dispatch({
-      type: "UPDATE_QUANTITY",
-      payload: { 
-        id: item.id, 
-        color: item.color, 
-        size: item.size, 
-        quantity: newQuantity 
-      },
+        type: "UPDATE_QUANTITY",
+        payload: {
+          id: item.id,
+          color: item.color,
+          size: item.size,
+          quantity: newQuantity
+        },
       })
       toast({
-          title: 'Cart Updated',
-          description: 'Item quantity updated successfully.',
-          variant: 'success'
-        })
+        title: 'Cart Updated',
+        description: 'Item quantity updated successfully.',
+        variant: 'success'
+      })
     } catch (error) {
       toast({
         title: 'Error',
@@ -43,19 +43,19 @@ export default function CartPage() {
         variant: 'destructive'
       })
     }
-    
+
   }
 
-  const removeItem = async(item) => {
+  const removeItem = async (item) => {
     try {
       await cartAPI.remove(item.id, item.color, item.size)
       dispatch({
-      type: "REMOVE_ITEM",
-      payload: {
-        id: item.id,
-        color: item.color,
-        size: item.size
-      }
+        type: "REMOVE_ITEM",
+        payload: {
+          id: item.id,
+          color: item.color,
+          size: item.size
+        }
       })
       toast({
         title: 'Item Removed',
@@ -113,17 +113,19 @@ export default function CartPage() {
                                 width={80}
                                 height={80}
                                 className="rounded-md" />
-                               
 
-                              <div>
-                                <p className="font-medium">{item.name}</p>
-                                <p className="text-sm text-muted-foreground">
+
+                              <div className="min-w-0 flex-1">
+                                <p className="font-medium line-clamp-2 break-words max-w-[200px] md:max-w-[300px]">
+                                  {item.name}
+                                </p>
+                                <p className="text-sm text-muted-foreground truncate">
                                   {item.color}, {item.size}
                                 </p>
                               </div>
                             </div>
                           </TableCell>
-                          
+
                           <TableCell>₹{item.price.toFixed(2)}</TableCell>
                           <TableCell>
                             <div className="flex items-center">
@@ -211,7 +213,7 @@ export default function CartPage() {
           </div>
         </div>
       </main>
-      
+
     </div>
   );
 }

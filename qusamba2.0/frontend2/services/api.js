@@ -5,20 +5,20 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/a
 const apiRequest = async (endpoint, options = {}) => {
   // Safely get token from localStorage (handles SSR)
   const token = typeof window !== 'undefined' ? localStorage.getItem('qusamba-token') : null;
-  
+
   // Prepare base headers
   const baseHeaders = {};
-  
+
   // Add authorization header if token exists
   if (token) {
     baseHeaders.Authorization = `Bearer ${token}`;
   }
-  
+
   // Add Content-Type only if not FormData (FormData sets its own Content-Type)
   if (!(options.body instanceof FormData)) {
     baseHeaders['Content-Type'] = 'application/json';
   }
-  
+
   const config = {
     headers: {
       ...baseHeaders,
@@ -28,12 +28,12 @@ const apiRequest = async (endpoint, options = {}) => {
   };
 
   const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
-  
+
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: 'API request failed' }));
     throw new Error(error.message || 'API request failed');
   }
-  
+
   return await response.json();
 };
 
@@ -97,6 +97,10 @@ export const productsAPI = {
   getAll: async (params = {}) => {
     const queryString = new URLSearchParams(params).toString();
     return apiRequest(`/products${queryString ? `?${queryString}` : ''}`);
+  },
+
+  getProductTypes: async () => {
+    return apiRequest('/products/types');
   },
 
   getById: async (id) => {
@@ -241,7 +245,7 @@ export const ordersAPI = {
   },
 
   getOrderStats: async () => {
-    return apiRequest('/admin/orders/stats');
+    return apiRequest('/orders/admin/stats');
   },
 
   updateOrderStatus: async (id, data) => {
@@ -416,11 +420,11 @@ export const adminAPI = {
 
   getSalesReport: async (params = {}) => {
     const queryString = new URLSearchParams(params).toString();
-    return apiRequest(`/admin/reports/sales${queryString ? `?${queryString}` : ''}`);
+    return apiRequest(`/admin/dashboard/sales${queryString ? `?${queryString}` : ''}`);
   },
 
   getInventoryReport: async () => {
-    return apiRequest('/admin/reports/inventory');
+    return apiRequest('/admin/dashboard/inventory');
   },
 };
 
@@ -461,7 +465,7 @@ export const addressAPI = {
 export const uploadImage = async (file) => {
   const formData = new FormData();
   formData.append('image', file);
-  
+
   return apiRequest('/upload/image', {
     method: 'POST',
     body: formData,
@@ -471,7 +475,7 @@ export const uploadImage = async (file) => {
 export const uploadMultipleImages = async (files) => {
   const formData = new FormData();
   files.forEach(file => formData.append('images', file));
-  
+
   return apiRequest('/upload/images', {
     method: 'POST',
     body: formData,
@@ -481,13 +485,13 @@ export const uploadMultipleImages = async (files) => {
 // Error handling utility
 export const handleAPIError = (error) => {
   console.error('API Error:', error);
-  
+
   if (error.message.includes('unauthorized') || error.message.includes('401')) {
     // Handle unauthorized access
     localStorage.removeItem('qusamba-token');
     window.location.href = '/login';
   }
-  
+
   return error.message || 'An error occurred';
 };
 

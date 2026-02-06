@@ -1,12 +1,12 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { 
-  BarChart3, 
-  DollarSign, 
-  Package, 
-  ShoppingCart, 
-  Users, 
+import {
+  BarChart3,
+  DollarSign,
+  Package,
+  ShoppingCart,
+  Users,
   TrendingUp,
   TrendingDown,
   Activity
@@ -15,27 +15,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { adminAPI } from "@/services/api"
 import { useToast } from "@/components/ui/use-toast"
-
-// Simple chart component
-function SimpleBarChart({ data, height = 200 }) {
-  const maxValue = Math.max(...data.map(d => d.value))
-  
-  return (
-    <div className="flex items-end justify-between h-full" style={{ height }}>
-      {data.map((item, index) => (
-        <div key={index} className="flex flex-col items-center flex-1 mx-1">
-          <div 
-            className="w-full bg-primary rounded-t-sm min-h-[4px]"
-            style={{ 
-              height: `${(item.value / maxValue) * (height - 40)}px`
-            }}
-          />
-          <div className="text-xs mt-2 text-center">{item.label}</div>
-        </div>
-      ))}
-    </div>
-  )
-}
+import { OverviewChart } from "@/components/charts/overview-chart"
 
 export function AdminDashboard() {
   const [stats, setStats] = useState({
@@ -228,9 +208,9 @@ export function AdminDashboard() {
           </CardHeader>
           <CardContent>
             {salesData.length > 0 ? (
-              <SimpleBarChart data={salesData} height={300} />
+              <OverviewChart data={salesData} />
             ) : (
-              <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+              <div className="flex items-center justify-center h-[350px] text-muted-foreground">
                 <Activity className="h-8 w-8 mr-2" />
                 No data available
               </div>

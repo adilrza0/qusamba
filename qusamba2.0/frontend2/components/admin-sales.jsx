@@ -13,6 +13,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useToast } from "@/components/ui/use-toast"
 import { adminAPI } from "@/services/api"
 import { cn } from "@/lib/utils"
+import { OverviewChart } from "@/components/charts/overview-chart"
+import { CategoryPieChart } from "@/components/charts/category-pie-chart"
 
 export function AdminSales() {
   const [date, setDate] = useState({
@@ -40,13 +42,13 @@ export function AdminSales() {
   const fetchSalesData = async () => {
     try {
       setLoading(true)
-      
+
       const params = {
         from: date.from?.toISOString(),
         to: date.to?.toISOString(),
         view: selectedView
       }
-      
+
       const response = await adminAPI.getSalesReport(params)
       setSalesData(response.data)
     } catch (error) {
@@ -175,7 +177,7 @@ export function AdminSales() {
                           <span className="ml-1">from last period</span>
                         </>
                       )
-                    })()} 
+                    })()}
                   </p>
                 </CardContent>
               </Card>
@@ -214,12 +216,7 @@ export function AdminSales() {
                 <CardTitle>Revenue Over Time</CardTitle>
               </CardHeader>
               <CardContent className="pl-2">
-                <img
-                  src="/placeholder.svg?height=350&width=600"
-                  alt="Chart"
-                  width={600}
-                  height={350}
-                  className="rounded-md object-cover" />
+                <OverviewChart data={salesData.salesOverTime} />
               </CardContent>
             </Card>
             <Card className="col-span-3">
@@ -278,48 +275,58 @@ export function AdminSales() {
           </Card>
         </TabsContent>
         <TabsContent value="categories" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Category Performance</CardTitle>
-              <CardDescription>Sales breakdown by product category.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <div className="p-8 text-center">
-                  <RefreshCw className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
-                  <p className="mt-2 text-muted-foreground">Loading category data...</p>
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Category</TableHead>
-                      <TableHead className="text-right">Orders</TableHead>
-                      <TableHead className="text-right">Revenue</TableHead>
-                      <TableHead className="text-right">Avg. Order</TableHead>
-                      <TableHead className="text-right">Share</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {salesData.salesByCategory.map((category, index) => {
-                      const share = (category.revenue / salesData.totalRevenue * 100).toFixed(1)
-                      const avgOrder = category.orders > 0 ? category.revenue / category.orders : 0
-                      
-                      return (
-                        <TableRow key={index}>
-                          <TableCell className="font-medium">{category.category}</TableCell>
-                          <TableCell className="text-right">{category.orders.toLocaleString()}</TableCell>
-                          <TableCell className="text-right">{formatCurrency(category.revenue)}</TableCell>
-                          <TableCell className="text-right">{formatCurrency(avgOrder)}</TableCell>
-                          <TableCell className="text-right">{share}%</TableCell>
-                        </TableRow>
-                      )
-                    })}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+            <Card className="col-span-3">
+              <CardHeader>
+                <CardTitle>Category Distribution</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <CategoryPieChart data={salesData.salesByCategory.map(c => ({ name: c.category, value: c.revenue }))} />
+              </CardContent>
+            </Card>
+            <Card className="col-span-4">
+              <CardHeader>
+                <CardTitle>Category Performance</CardTitle>
+                <CardDescription>Sales breakdown by product category.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <div className="p-8 text-center">
+                    <RefreshCw className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
+                    <p className="mt-2 text-muted-foreground">Loading category data...</p>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Category</TableHead>
+                        <TableHead className="text-right">Orders</TableHead>
+                        <TableHead className="text-right">Revenue</TableHead>
+                        <TableHead className="text-right">Avg. Order</TableHead>
+                        <TableHead className="text-right">Share</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {salesData.salesByCategory.map((category, index) => {
+                        const share = (category.revenue / salesData.totalRevenue * 100).toFixed(1)
+                        const avgOrder = category.orders > 0 ? category.revenue / category.orders : 0
+
+                        return (
+                          <TableRow key={index}>
+                            <TableCell className="font-medium">{category.category}</TableCell>
+                            <TableCell className="text-right">{category.orders.toLocaleString()}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(category.revenue)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(avgOrder)}</TableCell>
+                            <TableCell className="text-right">{share}%</TableCell>
+                          </TableRow>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
         <TabsContent value="customers" className="space-y-4">
           <Card>
@@ -348,7 +355,7 @@ export function AdminSales() {
                     {salesData.customerInsights.map((segment, index) => {
                       const avgSpend = segment.count > 0 ? segment.revenue / segment.count : 0
                       const contribution = (segment.revenue / salesData.totalRevenue * 100).toFixed(1)
-                      
+
                       return (
                         <TableRow key={index}>
                           <TableCell className="font-medium">{segment.segment}</TableCell>
@@ -366,6 +373,6 @@ export function AdminSales() {
           </Card>
         </TabsContent>
       </Tabs>
-    </div>)
+    </div >)
   );
 }

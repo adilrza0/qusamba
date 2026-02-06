@@ -12,7 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useAuth } from "@/contexts/auth-context"
 
 export function UserMenu() {
@@ -33,13 +33,16 @@ export function UserMenu() {
     );
   }
 
-  const initials = `${state.user.firstName[0]}${state.user.lastName[0]}`.toUpperCase()
+  const initials = `${state.user.firstName?.[0] || 'U'}${state.user.lastName?.[0] || ''}`.toUpperCase()
 
   return (
     (<DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="relative h-8 w-8 rounded-full">
           <Avatar className="h-8 w-8">
+            {state.user.avatar && (
+              <AvatarImage src={state.user.avatar} alt={state.user.firstName} />
+            )}
             <AvatarFallback>{initials}</AvatarFallback>
           </Avatar>
         </Button>

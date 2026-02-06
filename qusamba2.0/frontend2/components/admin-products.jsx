@@ -37,11 +37,20 @@ export function AdminProducts() {
   const [editingProduct, setEditingProduct] = useState(null)
   const [products, setProducts] = useState([])
   const [categories, setCategories] = useState([])
+  const [productTypes, setProductTypes] = useState([])
   const [loading, setLoading] = useState(true)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [selectedImages, setSelectedImages] = useState([])
   const [imagePreviews, setImagePreviews] = useState([])
   const [currentPage, setCurrentPage] = useState(1)
+  const [selectedProductType, setSelectedProductType] = useState('all')
+  const [selectedSize, setSelectedSize] = useState('all')
+  const [selectedColor, setSelectedColor] = useState('all')
+  const [sortBy, setSortBy] = useState('-createdAt')
+  // Common bangle sizes and colors for filtering (synced with user-side)
+  const filterSizes = ['2.2', '2.4', '2.6', '2.8', '2.10', 'Adjustable']
+  const filterColors = ['Gold', 'Silver', 'Rose Gold', 'Multicolor', 'Black', 'White']
+
   const [newProduct, setNewProduct] = useState({
     name: "",
     description: "",
@@ -63,14 +72,24 @@ export function AdminProducts() {
   const [variantImages, setVariantImages] = useState([])
   const [variantImagePreviews, setVariantImagePreviews] = useState([])
   const [showVariantForm, setShowVariantForm] = useState(false)
-  
+
   const { toast } = useToast()
 
   // Fetch products and categories from backend
   useEffect(() => {
     fetchProducts()
     fetchCategories()
-  }, [])
+    fetchProductTypes()
+  }, [currentPage, searchTerm, categoryFilter, selectedProductType, selectedSize, selectedColor, sortBy])
+
+  const fetchProductTypes = async () => {
+    try {
+      const types = await productsAPI.getProductTypes()
+      setProductTypes(types || [])
+    } catch (error) {
+      console.error('Error fetching product types:', error)
+    }
+  }
 
   const fetchProducts = async () => {
     try {
@@ -78,9 +97,25 @@ export function AdminProducts() {
         page: currentPage,
         limit: 12,
         search: searchTerm,
-        category: "undefined",
-        
+        sort: sortBy
       }
+
+      if (categoryFilter && categoryFilter !== 'all') {
+        params.category = categoryFilter
+      }
+
+      if (selectedProductType && selectedProductType !== 'all') {
+        params.productType = selectedProductType
+      }
+
+      if (selectedSize && selectedSize !== 'all') {
+        params.size = selectedSize
+      }
+
+      if (selectedColor && selectedColor !== 'all') {
+        params.color = selectedColor
+      }
+
       setLoading(true)
       console.log('Fetching products...')
       // Call the API to get all products
@@ -110,18 +145,7 @@ export function AdminProducts() {
     }
   }
 
-  const filteredProducts = products.filter((product) => {
-    const matchesSearch =
-      product.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.sku?.toLowerCase().includes(searchTerm.toLowerCase())
-
-    const matchesCategory = categoryFilter === "all" || 
-      product.category?._id === categoryFilter || 
-      product.category?.name === categoryFilter
-
-    return matchesSearch && matchesCategory
-  })
+  const filteredProducts = products // Use products directly as server-side filtering is now synced
 
   const handleInputChange = (e) => {
     const { name, value } = e.target
@@ -135,7 +159,7 @@ export function AdminProducts() {
   const handleImageSelect = (e) => {
     const files = Array.from(e.target.files)
     setSelectedImages(files)
-    
+
     // Create preview URLs
     const previews = files.map(file => URL.createObjectURL(file))
     setImagePreviews(previews)
@@ -152,7 +176,7 @@ export function AdminProducts() {
   const handleVariantImageSelect = (e) => {
     const files = Array.from(e.target.files)
     setVariantImages(files)
-    
+
     // Create preview URLs
     const previews = files.map(file => URL.createObjectURL(file))
     setVariantImagePreviews(previews)
@@ -210,7 +234,7 @@ export function AdminProducts() {
   const handleAddProduct = async () => {
     try {
       setUploadProgress(0)
-      
+
       const formData = new FormData()
       formData.append('name', newProduct.name)
       formData.append('description', newProduct.description)
@@ -219,12 +243,12 @@ export function AdminProducts() {
       formData.append('stock', newProduct.stock)
       formData.append('material', newProduct.material)
       formData.append('sku', newProduct.sku)
-      
+
       // Add main product images
       selectedImages.forEach((image, index) => {
         formData.append('images', image)
       })
-      
+
       // Add variants data
       if (newProduct.variants.length > 0) {
         formData.append('variants', JSON.stringify(newProduct.variants.map(variant => ({
@@ -234,7 +258,7 @@ export function AdminProducts() {
           price: variant.price,
           sku: variant.sku
         }))))
-        
+
         // Add variant images
         newProduct.variants.forEach((variant, variantIndex) => {
           variant.images.forEach((image, imageIndex) => {
@@ -242,21 +266,21 @@ export function AdminProducts() {
           })
         })
       }
-      
+
       const response = await productsAPI.create(formData)
-      
+
       // Reset form and close dialog
       setIsAddProductOpen(false)
       resetForm()
-      
+
       // Refresh products list
       fetchProducts()
-      
+
       toast({
         title: "Success",
         description: "Product added successfully."
       })
-      
+
     } catch (error) {
       console.error('Error adding product:', error)
       toast({
@@ -284,7 +308,7 @@ export function AdminProducts() {
   const handleUpdateProduct = async () => {
     try {
       setUploadProgress(0)
-      
+
       const formData = new FormData()
       formData.append('name', newProduct.name)
       formData.append('description', newProduct.description)
@@ -293,27 +317,27 @@ export function AdminProducts() {
       formData.append('stock', newProduct.stock)
       formData.append('material', newProduct.material)
       formData.append('sku', newProduct.sku)
-      
+
       // Add new images if any
       selectedImages.forEach((image, index) => {
         formData.append('images', image)
       })
-      
+
       const response = await productsAPI.update(editingProduct._id, formData)
-      
+
       // Reset form and close dialog
       setIsEditProductOpen(false)
       setEditingProduct(null)
       resetForm()
-      
+
       // Refresh products list
       fetchProducts()
-      
+
       toast({
         title: "Success",
         description: "Product updated successfully."
       })
-      
+
     } catch (error) {
       console.error('Error updating product:', error)
       toast({
@@ -328,15 +352,15 @@ export function AdminProducts() {
     if (window.confirm('Are you sure you want to delete this product?')) {
       try {
         await productsAPI.delete(productId)
-        
+
         // Refresh products list
         fetchProducts()
-        
+
         toast({
           title: "Success",
           description: "Product deleted successfully."
         })
-        
+
       } catch (error) {
         console.error('Error deleting product:', error)
         toast({
@@ -403,8 +427,8 @@ export function AdminProducts() {
               onChange={(e) => setSearchTerm(e.target.value)} />
           </div>
           <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Filter by category" />
+            <SelectTrigger className="w-[140px]">
+              <SelectValue placeholder="Category" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Categories</SelectItem>
@@ -413,6 +437,79 @@ export function AdminProducts() {
               ))}
             </SelectContent>
           </Select>
+
+          {/* Product Type Filter */}
+          <Select value={selectedProductType} onValueChange={setSelectedProductType}>
+            <SelectTrigger className="w-[140px]">
+              <SelectValue placeholder="Type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Types</SelectItem>
+              {productTypes?.map((type) => (
+                <SelectItem key={type.name} value={type.name}>{type.name}</SelectItem>
+              )) || []}
+            </SelectContent>
+          </Select>
+
+          {/* Size Filter */}
+          <Select value={selectedSize} onValueChange={setSelectedSize}>
+            <SelectTrigger className="w-[110px]">
+              <SelectValue placeholder="Size" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Sizes</SelectItem>
+              {filterSizes.map((size) => (
+                <SelectItem key={size} value={size}>{size}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Color Filter */}
+          <Select value={selectedColor} onValueChange={setSelectedColor}>
+            <SelectTrigger className="w-[110px]">
+              <SelectValue placeholder="Color" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Colors</SelectItem>
+              {filterColors.map((color) => (
+                <SelectItem key={color} value={color}>{color}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Sort By */}
+          <Select value={sortBy} onValueChange={setSortBy}>
+            <SelectTrigger className="w-[130px]">
+              <SelectValue placeholder="Sort" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="-createdAt">Newest First</SelectItem>
+              <SelectItem value="createdAt">Oldest First</SelectItem>
+              <SelectItem value="price">Price: Low to High</SelectItem>
+              <SelectItem value="-price">Price: High to Low</SelectItem>
+              <SelectItem value="-rating">Popularity</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {/* Reset Filters */}
+          {(categoryFilter !== 'all' || selectedProductType !== 'all' || selectedSize !== 'all' || selectedColor !== 'all' || searchTerm !== '') && (
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setCategoryFilter('all')
+                setSelectedProductType('all')
+                setSelectedSize('all')
+                setSelectedColor('all')
+                setSortBy('-createdAt')
+                setSearchTerm('')
+                setCurrentPage(1)
+              }}
+              className="h-9 px-2 text-muted-foreground hover:text-foreground"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+          )}
+
           <Dialog open={isAddProductOpen} onOpenChange={setIsAddProductOpen}>
             <DialogTrigger asChild>
               <Button>
@@ -489,7 +586,7 @@ export function AdminProducts() {
                     onChange={handleInputChange}
                     className="col-span-3" />
                 </div>
-                
+
                 {/* Variant Management Section */}
                 <div className="grid grid-cols-4 items-start gap-4">
                   <Label className="text-right mt-2">Variants</Label>
@@ -512,13 +609,13 @@ export function AdminProducts() {
                         ))}
                       </div>
                     )}
-                    
+
                     {/* Add Variant Button */}
                     <Button type="button" onClick={() => setShowVariantForm(true)} variant="outline" className="w-full">
                       <Plus className="h-4 w-4 mr-2" />
                       Add New Variant
                     </Button>
-                    
+
                     {/* Variant Form */}
                     {showVariantForm && (
                       <div className="border p-4 rounded bg-blue-50">
@@ -544,11 +641,11 @@ export function AdminProducts() {
                               <Input id="variant-price" name="price" type="number" step="0.01" value={currentVariant.price} onChange={handleVariantInputChange} placeholder="0.00" />
                             </div>
                             <div>
-                              <Label htmlFor="variant-sku">SKU</Label>
-                              <Input id="variant-sku" name="sku" value={currentVariant.sku} onChange={handleVariantInputChange} placeholder="Unique SKU" />
+                              <Label htmlFor="variant-sku">SKU (Optional)</Label>
+                              <Input id="variant-sku" name="sku" value={currentVariant.sku} onChange={handleVariantInputChange} placeholder="Leave empty to auto-generate" />
                             </div>
                           </div>
-                          
+
                           {/* Variant Image Upload */}
                           <div>
                             <Label htmlFor="variant-images">Images for this Color</Label>
@@ -566,7 +663,7 @@ export function AdminProducts() {
                                 Browse
                               </Button>
                             </div>
-                            
+
                             {/* Variant Image Previews */}
                             {variantImagePreviews.length > 0 && (
                               <div className="grid grid-cols-4 gap-2 mt-2">
@@ -589,7 +686,7 @@ export function AdminProducts() {
                               </div>
                             )}
                           </div>
-                          
+
                           <div className="flex justify-end gap-2">
                             <Button type="button" onClick={() => setShowVariantForm(false)} variant="outline">
                               Cancel
@@ -603,7 +700,7 @@ export function AdminProducts() {
                     )}
                   </div>
                 </div>
-                
+
                 {/* Image Upload Section */}
                 <div className="grid grid-cols-4 items-start gap-4">
                   <Label htmlFor="images" className="text-right mt-2">
@@ -624,7 +721,7 @@ export function AdminProducts() {
                         Browse
                       </Button>
                     </div>
-                    
+
                     {/* Image Previews */}
                     {imagePreviews.length > 0 && (
                       <div className="grid grid-cols-3 gap-2">
@@ -646,11 +743,11 @@ export function AdminProducts() {
                         ))}
                       </div>
                     )}
-                    
+
                     {/* Upload Progress */}
                     {uploadProgress > 0 && uploadProgress < 100 && (
                       <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div 
+                        <div
                           className="bg-blue-600 h-2 rounded-full transition-all duration-300"
                           style={{ width: `${uploadProgress}%` }}
                         ></div>
@@ -666,8 +763,8 @@ export function AdminProducts() {
                 }}>
                   Cancel
                 </Button>
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   onClick={handleAddProduct}
                   disabled={uploadProgress > 0 && uploadProgress < 100}
                 >
@@ -680,7 +777,7 @@ export function AdminProducts() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
-          
+
           {/* Edit Product Dialog */}
           <Dialog open={isEditProductOpen} onOpenChange={setIsEditProductOpen}>
             <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
@@ -774,7 +871,7 @@ export function AdminProducts() {
                     onChange={handleInputChange}
                     className="col-span-3" />
                 </div>
-                
+
                 {/* Current Images */}
                 {editingProduct?.images?.length > 0 && (
                   <div className="grid grid-cols-4 items-start gap-4">
@@ -796,7 +893,7 @@ export function AdminProducts() {
                     </div>
                   </div>
                 )}
-                
+
                 {/* New Images Upload */}
                 <div className="grid grid-cols-4 items-start gap-4">
                   <Label htmlFor="edit-images" className="text-right mt-2">
@@ -817,7 +914,7 @@ export function AdminProducts() {
                         Browse
                       </Button>
                     </div>
-                    
+
                     {/* New Image Previews */}
                     {imagePreviews.length > 0 && (
                       <div className="grid grid-cols-3 gap-2">
@@ -839,11 +936,11 @@ export function AdminProducts() {
                         ))}
                       </div>
                     )}
-                    
+
                     {/* Upload Progress */}
                     {uploadProgress > 0 && uploadProgress < 100 && (
                       <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div 
+                        <div
                           className="bg-blue-600 h-2 rounded-full transition-all duration-300"
                           style={{ width: `${uploadProgress}%` }}
                         ></div>
@@ -860,8 +957,8 @@ export function AdminProducts() {
                 }}>
                   Cancel
                 </Button>
-                <Button 
-                  type="submit" 
+                <Button
+                  type="submit"
                   onClick={handleUpdateProduct}
                   disabled={uploadProgress > 0 && uploadProgress < 100}
                 >
@@ -882,7 +979,6 @@ export function AdminProducts() {
             <TableRow>
               <TableHead>Image</TableHead>
               <TableHead>Name</TableHead>
-              <TableHead className="hidden md:table-cell">Description</TableHead>
               <TableHead>Price</TableHead>
               <TableHead className="hidden sm:table-cell">Category</TableHead>
               <TableHead className="hidden sm:table-cell">Stock</TableHead>
@@ -893,13 +989,13 @@ export function AdminProducts() {
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8">
+                <TableCell colSpan={7} className="text-center py-8">
                   Loading products...
                 </TableCell>
               </TableRow>
             ) : filteredProducts.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8">
+                <TableCell colSpan={7} className="text-center py-8">
                   No products found.
                 </TableCell>
               </TableRow>
@@ -920,18 +1016,17 @@ export function AdminProducts() {
                       </div>
                     )}
                   </TableCell>
-                  <TableCell className="font-medium">{product.name}</TableCell>
-                  <TableCell className="hidden md:table-cell">
-                    <p className="truncate max-w-[300px]">{product.description}</p>
+                  <TableCell className="font-medium">
+                    {product.name.split(' ').slice(0, 10).join(' ')}
+                    {product.name.split(' ').length > 10 ? '...' : ''}
                   </TableCell>
-                  <TableCell>?{product.price.toFixed(2)}</TableCell>
+                  <TableCell>Rs. {product.price.toFixed(2)}</TableCell>
                   <TableCell className="hidden sm:table-cell">{product.category.name}</TableCell>
                   <TableCell className="hidden sm:table-cell">{product.stock}</TableCell>
                   <TableCell>
                     <div
-                      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                        product.stock > 0 ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
-                      }`}>
+                      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${product.stock > 0 ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+                        }`}>
                       {product.stock > 0 ? "In Stock" : "Out of Stock"}
                     </div>
                   </TableCell>

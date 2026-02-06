@@ -70,13 +70,13 @@ export default function CheckoutPage() {
     };
 
     try {
-      const paymentResult = await processPayment(orderData, userDetails, token );
+      const paymentResult = await processPayment(orderData, userDetails, token);
       console.log("Payment successful!", paymentResult);
-      
+
       // Clear cart after successful payment
       // You might need to add this method to your cart context
       // state.clearCart();
-      
+
       // Redirect to success page with order details
       const searchParams = new URLSearchParams({
         orderId: paymentResult.order._id,
@@ -85,9 +85,9 @@ export default function CheckoutPage() {
         amount: paymentResult.order.totalAmount.toString(),
         status: paymentResult.order.status
       });
-      
+
       router.push(`/order-success?${searchParams.toString()}`);
-      
+
     } catch (err) {
       console.error("Payment failed", err);
       alert(`Payment failed: ${err.message}`);
@@ -151,7 +151,7 @@ export default function CheckoutPage() {
 
   return (
     (<div className="flex flex-col min-h-screen">
-      
+
       <main className="flex-1">
         <div className="container px-4 py-8 md:px-6 md:py-12">
           <div className="grid gap-8 lg:grid-cols-2">
@@ -251,15 +251,18 @@ export default function CheckoutPage() {
                     <div
                       key={`${item.id}-${item.color}-${item.size}`}
                       className="flex items-center gap-4">
-                      <Image
-                        src={item.image || "/placeholder.svg"}
-                        alt={item.name}
-                        width={60}
-                        height={60}
-                        className="rounded-md" />
-                      <div className="flex-1">
-                        <p className="font-medium">{item.name}</p>
-                        <p className="text-sm text-muted-foreground">
+                      <div className="relative h-[60px] w-[60px] min-w-[60px]">
+                        <Image
+                          src={item?.images?.[0]?.url || "/placeholder.svg"}
+                          alt={item.name}
+                          fill
+                          className="rounded-md object-cover" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium line-clamp-2 break-words text-sm">
+                          {item.name}
+                        </p>
+                        <p className="text-xs text-muted-foreground truncate">
                           {item.color}, {item.size} × {item.quantity}
                         </p>
                       </div>

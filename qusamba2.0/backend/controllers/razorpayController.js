@@ -15,22 +15,22 @@ const razorpay = new Razorpay({
 
 // Create Razorpay Order
 exports.createRazorpayOrder = async (req, res) => {
-    console.log('Creating Razorpay order with body:', req.body);
-    console.log('Environment - RAZORPAY_KEY_ID:', process.env.RAZORPAY_KEY_ID ? 'Set' : 'Not Set');
-    console.log('Environment - RAZORPAY_KEY_SECRET:', process.env.RAZORPAY_KEY_SECRET ? 'Set' : 'Not Set');
+  console.log('Creating Razorpay order with body:', req.body);
+  console.log('Environment - RAZORPAY_KEY_ID:', process.env.RAZORPAY_KEY_ID ? 'Set' : 'Not Set');
+  console.log('Environment - RAZORPAY_KEY_SECRET:', process.env.RAZORPAY_KEY_SECRET ? 'Set' : 'Not Set');
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ 
-        success: false, 
-        errors: errors.array() 
+      return res.status(400).json({
+        success: false,
+        errors: errors.array()
       });
     }
 
     const { amount, currency = 'INR', orderId, shippingAddress, items, subtotal, shippingCost, tax } = req.body;
-    
+
     let order;
-    
+
     // If orderId is not provided or is the placeholder, create a new order
     if (!orderId) {
       // Save shipping address to user's addresses if it's new
@@ -42,7 +42,7 @@ exports.createRazorpayOrder = async (req, res) => {
           await user.save();
         }
       }
-      
+
       // Create new order
       // Validate items array
       if (!items || items.length === 0) {
@@ -55,7 +55,7 @@ exports.createRazorpayOrder = async (req, res) => {
       // Transform frontend cart structure to backend order item structure
       const transformedItems = items.map(item => {
         console.log('Processing item:', item);
-        
+
         // Validate required fields
         if (!item.id) {
           throw new Error(`Item is missing product ID: ${JSON.stringify(item)}`);
@@ -72,7 +72,7 @@ exports.createRazorpayOrder = async (req, res) => {
         if (!item.quantity || item.quantity <= 0) {
           throw new Error(`Item has invalid quantity: ${JSON.stringify(item)}`);
         }
-        
+
         return {
           product: item.id,
           name: item.name,
@@ -209,7 +209,7 @@ exports.verifyRazorpayPayment = async (req, res) => {
       order.payment.razorpaySignature = razorpay_signature;
       order.payment.status = 'completed';
       order.payment.paidAt = new Date();
-      order.status = 'confirmed';
+      order.status = 'placed'; // Or confirmed, depending on flow. 'placed' is better initial success state.
       await order.save();
 
       // Update product stock
@@ -328,14 +328,14 @@ exports.handleRazorpayWebhook = async (req, res) => {
 // Helper function to handle payment captured
 const handlePaymentCaptured = async (paymentEntity) => {
   try {
-    const order = await Order.findOne({ 
-      'payment.razorpayOrderId': paymentEntity.order_id 
+    const order = await Order.findOne({
+      'payment.razorpayOrderId': paymentEntity.order_id
     }).populate('user');
 
     if (order && order.payment.status !== 'completed') {
       order.payment.razorpayPaymentId = paymentEntity.id;
       order.payment.status = 'completed';
-      order.status = 'confirmed';
+      order.status = 'placed'; // Use placed as the first successful state
       order.payment.paidAt = new Date();
       await order.save();
 
@@ -369,8 +369,8 @@ const handlePaymentCaptured = async (paymentEntity) => {
 // Helper function to handle payment failed
 const handlePaymentFailed = async (paymentEntity) => {
   try {
-    const order = await Order.findOne({ 
-      'payment.razorpayOrderId': paymentEntity.order_id 
+    const order = await Order.findOne({
+      'payment.razorpayOrderId': paymentEntity.order_id
     });
 
     if (order) {

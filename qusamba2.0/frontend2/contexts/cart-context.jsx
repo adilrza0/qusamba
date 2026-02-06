@@ -28,7 +28,7 @@ function cartReducer(state, action) {
     }
 
     case "REMOVE_ITEM": {
-      
+
       const { id, color, size } = action.payload
       const newItems = state.items.filter((item) => {
         if (typeof action.payload === 'string') {
@@ -46,10 +46,10 @@ function cartReducer(state, action) {
 
     case "UPDATE_QUANTITY": {
       const { id, color, size, quantity } = action.payload
-      
+
       if (quantity <= 0) {
-        return cartReducer(state, { 
-          type: "REMOVE_ITEM", 
+        return cartReducer(state, {
+          type: "REMOVE_ITEM",
           payload: { id, color, size }
         });
       }
@@ -57,8 +57,8 @@ function cartReducer(state, action) {
       const newItems = state.items.map((item) => {
         if (color && size) {
           // Update specific variant
-          return item.id === id && item.color === color && item.size === size 
-            ? { ...item, quantity } 
+          return item.id === id && item.color === color && item.size === size
+            ? { ...item, quantity }
             : item
         } else {
           // Backward compatibility - update by id only
@@ -93,7 +93,7 @@ export function CartProvider({
     total: 0,
     itemCount: 0,
   })
-  
+
   // Safely get auth state to avoid SSR issues
   let authState;
   try {
@@ -124,21 +124,25 @@ export function CartProvider({
       setIsLoading(true)
       const response = await cartAPI.get()
       if (response.success) {
+        console.log("Raw cart response:", response.data.cart)
         // Transform backend cart format to frontend format
-        const transformedItems = response.data.cart.map(item => ({
-          id: item.product._id,
-          name: item.product.name,
-          price: item.product.price,
-          images: item.product.images,
-          color: item.color,
-          size: item.size,
-          quantity: item.quantity,
-          slug: item.product.slug,
-          stock: item.product.stock
-        }))
-        
+        // Filter out items where product is null (e.g. deleted products)
+        const transformedItems = response.data.cart
+          .filter(item => item.product)
+          .map(item => ({
+            id: item.product._id,
+            name: item.product.name,
+            price: item.product.price,
+            images: item.product.images,
+            color: item.color,
+            size: item.size,
+            quantity: item.quantity,
+            slug: item.product.slug,
+            stock: item.product.stock
+          }))
+
         dispatch({ type: "LOAD_CART", payload: transformedItems })
-        
+
         // Also save to localStorage as backup
         // localStorage.setItem("qusamba-cart", JSON.stringify(transformedItems))
       }
@@ -183,18 +187,18 @@ export function CartProvider({
         // Fallback to local storage
       }
     }
-    
+
     // Fallback or offline mode
-    dispatch({ 
-      type: "ADD_ITEM", 
-      payload: { 
+    dispatch({
+      type: "ADD_ITEM",
+      payload: {
         id: product.id,
         name: product.name,
         price: product.price,
         images: product.images,
         color,
         size
-      } 
+      }
     })
     return true
   }
@@ -213,7 +217,7 @@ export function CartProvider({
         // Fallback to local storage
       }
     }
-    
+
     // Fallback or offline mode
     dispatch({ type: "REMOVE_ITEM", payload: { id, color, size } })
     return true
@@ -232,7 +236,7 @@ export function CartProvider({
         // Fallback to local storage
       }
     }
-    
+
     // Fallback or offline mode
     dispatch({ type: "UPDATE_QUANTITY", payload: { id, quantity, color, size } })
     return true
@@ -251,22 +255,22 @@ export function CartProvider({
         // Fallback to local storage
       }
     }
-    
+
     // Fallback or offline mode
     dispatch({ type: "CLEAR_CART" })
     return true
   }
 
   return (
-    <CartContext.Provider 
-      value={{ 
-        state: { ...state, isLoading }, 
-        dispatch, 
-        addItem, 
-        removeItem, 
-        updateQuantity, 
+    <CartContext.Provider
+      value={{
+        state: { ...state, isLoading },
+        dispatch,
+        addItem,
+        removeItem,
+        updateQuantity,
         clearCart,
-        syncWithBackend 
+        syncWithBackend
       }}
     >
       {children}

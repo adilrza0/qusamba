@@ -27,23 +27,23 @@ exports.getDashboardStats = async (req, res) => {
     // Get previous period stats for growth calculation
     const [lastMonthRevenue, lastMonthOrders, lastMonthProducts, lastMonthCustomers] = await Promise.all([
       Order.aggregate([
-        { 
-          $match: { 
+        {
+          $match: {
             status: { $in: ['confirmed', 'processing', 'shipped', 'delivered'] },
             createdAt: { $gte: lastYear, $lt: lastMonth }
-          } 
+          }
         },
         { $group: { _id: null, total: { $sum: '$totalAmount' } } }
       ]),
-      Order.countDocuments({ 
+      Order.countDocuments({
         status: { $in: ['confirmed', 'processing', 'shipped', 'delivered'] },
         createdAt: { $gte: lastYear, $lt: lastMonth }
       }),
-      Product.countDocuments({ 
+      Product.countDocuments({
         status: 'active',
         createdAt: { $gte: lastYear, $lt: lastMonth }
       }),
-      User.countDocuments({ 
+      User.countDocuments({
         role: 'customer',
         createdAt: { $gte: lastYear, $lt: lastMonth }
       })
@@ -62,10 +62,10 @@ exports.getDashboardStats = async (req, res) => {
     const recentSales = await Order.find({
       status: { $in: ['confirmed', 'processing', 'shipped', 'delivered'] }
     })
-    .populate('user', 'firstName lastName email')
-    .sort({ createdAt: -1 })
-    .limit(5)
-    .select('user totalAmount orderNumber createdAt');
+      .populate('user', 'firstName lastName email')
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .select('user totalAmount orderNumber createdAt');
 
     // Get sales chart data (last 7 months)
     const salesChart = await Order.aggregate([
@@ -138,7 +138,7 @@ exports.getDashboardStats = async (req, res) => {
 exports.getSalesAnalytics = async (req, res) => {
   try {
     const { from, to, view = 'all' } = req.query;
-    
+
     let dateFilter = {};
     if (from || to) {
       dateFilter.createdAt = {};
@@ -256,11 +256,11 @@ exports.getSalesAnalytics = async (req, res) => {
     const previousPeriodStart = new Date(previousPeriodEnd - periodLength);
 
     const previousRevenue = await Order.aggregate([
-      { 
-        $match: { 
+      {
+        $match: {
           ...statusFilter,
           createdAt: { $gte: previousPeriodStart, $lt: previousPeriodEnd }
-        } 
+        }
       },
       { $group: { _id: null, total: { $sum: '$totalAmount' } } }
     ]);
@@ -270,6 +270,27 @@ exports.getSalesAnalytics = async (req, res) => {
 
     // Mock conversion rate (you'd calculate this based on your analytics)
     const conversionRate = 2.5; // 2.5% conversion rate
+
+    // Get sales over time
+    const salesOverTime = await Order.aggregate([
+      { $match: matchFilter },
+      {
+        $group: {
+          _id: {
+            year: { $year: '$createdAt' },
+            month: { $month: '$createdAt' },
+            day: { $dayOfMonth: '$createdAt' }
+          },
+          value: { $sum: '$totalAmount' }
+        }
+      },
+      { $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 } }
+    ]);
+
+    const formattedSalesOverTime = salesOverTime.map(item => ({
+      label: `${item._id.day}/${item._id.month}`,
+      value: item.value
+    }));
 
     res.status(200).json({
       success: true,
@@ -281,7 +302,8 @@ exports.getSalesAnalytics = async (req, res) => {
         conversionRate,
         topProducts,
         salesByCategory,
-        customerInsights: formattedCustomerInsights
+        customerInsights: formattedCustomerInsights,
+        salesOverTime: formattedSalesOverTime
       }
     });
 
@@ -339,18 +361,18 @@ exports.getInventoryOverview = async (req, res) => {
       status: 'active',
       stock: { $lte: 5, $gt: 0 }
     })
-    .select('name stock sku')
-    .sort({ stock: 1 })
-    .limit(10);
+      .select('name stock sku')
+      .sort({ stock: 1 })
+      .limit(10);
 
     // Get out of stock products
     const outOfStockAlerts = await Product.find({
       status: 'active',
       stock: 0
     })
-    .select('name stock sku')
-    .sort({ createdAt: -1 })
-    .limit(10);
+      .select('name stock sku')
+      .sort({ createdAt: -1 })
+      .limit(10);
 
     res.status(200).json({
       success: true,
@@ -381,7 +403,7 @@ exports.getInventoryOverview = async (req, res) => {
 exports.getOrderAnalytics = async (req, res) => {
   try {
     const { from, to } = req.query;
-    
+
     let dateFilter = {};
     if (from || to) {
       dateFilter.createdAt = {};
@@ -421,12 +443,12 @@ exports.getOrderAnalytics = async (req, res) => {
 
     // Get average order processing time
     const processingTimes = await Order.aggregate([
-      { 
-        $match: { 
+      {
+        $match: {
           ...dateFilter,
           status: { $in: ['delivered', 'shipped'] },
           confirmedAt: { $exists: true }
-        } 
+        }
       },
       {
         $project: {
@@ -557,11 +579,11 @@ exports.getCustomerAnalytics = async (req, res) => {
 
     // Get customer acquisition trend
     const acquisitionTrend = await User.aggregate([
-      { 
-        $match: { 
+      {
+        $match: {
           role: 'customer',
           createdAt: { $gte: new Date(now.getFullYear(), now.getMonth() - 11, 1) }
-        } 
+        }
       },
       {
         $group: {
@@ -595,7 +617,7 @@ exports.getCustomerAnalytics = async (req, res) => {
       }
     ]);
 
-    const retentionRate = retentionData[0] ? 
+    const retentionRate = retentionData[0] ?
       (retentionData[0].repeatCustomers / retentionData[0].totalCustomers) * 100 : 0;
 
     res.status(200).json({

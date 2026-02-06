@@ -6,12 +6,12 @@ const { sendEmail } = require('../utils/email');
 
 const generateToken = (user) => {
   return jwt.sign(
-    { 
-      id: user._id, 
+    {
+      id: user._id,
       role: user.role,
-      email: user.email 
-    }, 
-    process.env.JWT_SECRET, 
+      email: user.email
+    },
+    process.env.JWT_SECRET,
     {
       expiresIn: process.env.JWT_EXPIRES_IN || '7d'
     }
@@ -20,10 +20,10 @@ const generateToken = (user) => {
 
 const createSendToken = (user, statusCode, res) => {
   const token = generateToken(user);
-  
+
   // Remove password from output
   user.password = undefined;
-  
+
   res.status(statusCode).json({
     success: true,
     token,
@@ -169,7 +169,7 @@ exports.getMe = async (req, res) => {
     const user = await User.findById(req.user._id)
       .populate('cart.product', 'name price images slug')
       .populate('wishlist', 'name price images slug');
-    
+
     res.status(200).json({
       success: true,
       data: {
@@ -192,7 +192,7 @@ exports.updateProfile = async (req, res) => {
   try {
     const updates = {};
     const allowedUpdates = ['firstName', 'lastName', 'phone', 'dateOfBirth', 'gender'];
-    
+
     // Only include allowed fields
     allowedUpdates.forEach(field => {
       if (req.body[field] !== undefined) {
@@ -358,4 +358,44 @@ exports.logout = async (req, res) => {
     success: true,
     message: 'Logged out successfully'
   });
+};
+
+// ============================================
+// Google OAuth Controllers
+// ============================================
+
+// @desc    Initiate Google OAuth
+// @route   GET /api/auth/google
+// @access  Public
+exports.googleAuth = (req, res, next) => {
+  // This will be handled by passport middleware
+  // Just a placeholder for route definition
+};
+
+// @desc    Google OAuth callback
+// @route   GET /api/auth/google/callback
+// @access  Public
+exports.googleCallback = async (req, res) => {
+  try {
+    // User is authenticated by passport and attached to req.user
+    if (!req.user) {
+      return res.redirect(`${process.env.FRONTEND_URL}/login?error=authentication_failed`);
+    }
+
+    // Generate JWT token
+    const token = generateToken(req.user);
+
+    // Redirect to frontend with token
+    res.redirect(`${process.env.FRONTEND_URL}/auth/callback?token=${token}`);
+  } catch (error) {
+    console.error('Google callback error:', error);
+    res.redirect(`${process.env.FRONTEND_URL}/login?error=server_error`);
+  }
+};
+
+// @desc    Handle Google OAuth failure
+// @route   GET /api/auth/google/failure
+// @access  Public
+exports.googleAuthFailure = (req, res) => {
+  res.redirect(`${process.env.FRONTEND_URL}/login?error=google_auth_failed`);
 };

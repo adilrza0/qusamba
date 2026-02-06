@@ -27,18 +27,37 @@ const userSchema = new mongoose.Schema({
   firstName: { type: String, required: true },
   lastName: { type: String, required: true },
   email: { type: String, required: true, unique: true, lowercase: true },
-  password: { type: String, required: true },
+  password: {
+    type: String,
+    required: function () {
+      // Password is required only for local authentication
+      return this.authProvider === 'local' || !this.authProvider;
+    }
+  },
   phone: String,
   role: { type: String, enum: ['customer', 'admin'], default: 'customer' },
   isActive: { type: Boolean, default: true },
-  
+
+  // OAuth fields
+  authProvider: {
+    type: String,
+    enum: ['local', 'google', 'github', 'facebook'],
+    default: 'local'
+  },
+  providerId: { type: String }, // OAuth provider's user ID
+  providerData: {
+    picture: String, // Profile picture from OAuth provider
+    locale: String,
+    verified_email: Boolean
+  },
+
   // Cart and Wishlist
   cart: [cartItemSchema],
   wishlist: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Product' }],
-  
+
   // Addresses
   addresses: [addressSchema],
-  
+
   // User preferences
   preferences: {
     currency: { type: String, default: 'INR' },
@@ -48,12 +67,12 @@ const userSchema = new mongoose.Schema({
       sms: { type: Boolean, default: false }
     }
   },
-  
+
   // Profile information
   avatar: String,
   dateOfBirth: Date,
   gender: { type: String, enum: ['male', 'female', 'other'] },
-  
+
   // Security
   emailVerified: { type: Boolean, default: false },
   phoneVerified: { type: Boolean, default: false },

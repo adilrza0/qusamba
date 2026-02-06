@@ -7,7 +7,7 @@ const variantSchema = new mongoose.Schema({
   },
   size: {
     type: String,
-    required: true
+    required: false
   },
   stock: {
     type: Number,
@@ -25,7 +25,10 @@ const variantSchema = new mongoose.Schema({
   },
   images: [{
     url: String,
-    public_id: String,
+    public_id: {
+      type: String,
+      required: false
+    },
     alt: String,
     forColor: String
   }]
@@ -80,7 +83,15 @@ const productSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
-  
+  vendor: {
+    type: String,
+    trim: true
+  },
+  productType: {
+    type: String,
+    trim: true
+  },
+
   // Pricing
   price: {
     type: Number,
@@ -95,7 +106,7 @@ const productSchema = new mongoose.Schema({
     type: Number,
     min: 0
   },
-  
+
   // Images
   images: [{
     url: {
@@ -104,14 +115,14 @@ const productSchema = new mongoose.Schema({
     },
     public_id: {
       type: String,
-      required: true
+      required: false
     },
     alt: {
       type: String,
       default: 'Product image'
     }
   }],
-  
+
   // Category and Classification
   category: {
     type: mongoose.Schema.Types.ObjectId,
@@ -123,12 +134,11 @@ const productSchema = new mongoose.Schema({
     ref: 'Category'
   },
   tags: [String],
-  
+
   // Product Details
   material: {
     type: String,
-    required: true,
-    enum: ['Gold', 'Silver', 'Brass', 'Copper', 'Alloy', 'Stainless Steel', 'Platinum', 'Other']
+    required: false
   },
   weight: {
     value: Number,
@@ -140,7 +150,7 @@ const productSchema = new mongoose.Schema({
     height: Number,
     unit: { type: String, default: 'cm' }
   },
-  
+
   // Inventory
   stock: {
     type: Number,
@@ -161,10 +171,10 @@ const productSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
-  
+
   // Variants (for different colors, sizes)
   variants: [variantSchema],
-  
+
   // Status
   status: {
     type: String,
@@ -179,7 +189,7 @@ const productSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
-  
+
   // Reviews and Ratings
   reviews: [reviewSchema],
   averageRating: {
@@ -192,12 +202,12 @@ const productSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
-  
+
   // SEO
   metaTitle: String,
   metaDescription: String,
   metaKeywords: [String],
-  
+
   // Analytics
   viewCount: {
     type: Number,
@@ -207,12 +217,12 @@ const productSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
-  
+
   // Additional Information
   careInstructions: String,
   warranty: String,
   returnPolicy: String,
-  
+
   // Admin fields
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
@@ -225,7 +235,7 @@ const productSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // Create slug from name before saving
-productSchema.pre('save', function(next) {
+productSchema.pre('save', function (next) {
   if (this.isModified('name')) {
     this.slug = this.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
   }
@@ -233,7 +243,7 @@ productSchema.pre('save', function(next) {
 });
 
 // Calculate average rating when reviews change
-productSchema.methods.calculateAverageRating = function() {
+productSchema.methods.calculateAverageRating = function () {
   if (this.reviews.length === 0) {
     this.averageRating = 0;
     this.totalReviews = 0;
@@ -245,7 +255,7 @@ productSchema.methods.calculateAverageRating = function() {
 };
 
 // Virtual for sale percentage
-productSchema.virtual('salePercentage').get(function() {
+productSchema.virtual('salePercentage').get(function () {
   if (this.salePrice && this.price > this.salePrice) {
     return Math.round(((this.price - this.salePrice) / this.price) * 100);
   }
@@ -253,12 +263,12 @@ productSchema.virtual('salePercentage').get(function() {
 });
 
 // Virtual for effective price
-productSchema.virtual('effectivePrice').get(function() {
+productSchema.virtual('effectivePrice').get(function () {
   return this.salePrice && this.salePrice < this.price ? this.salePrice : this.price;
 });
 
 // Virtual for stock status
-productSchema.virtual('stockStatus').get(function() {
+productSchema.virtual('stockStatus').get(function () {
   if (this.stock <= 0) return 'out_of_stock';
   if (this.stock <= 5) return 'low_stock';
   return 'in_stock';
